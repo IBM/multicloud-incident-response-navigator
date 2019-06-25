@@ -316,7 +316,7 @@ class Application: # gets graph for application view
 				self.resourceSummaries[type][rsc]["Describe"] = describe
 
 	def getYaml(self, type, resource_name):
-		command = kubectl + type + " " + name + " -o yaml"
+		command = kubectl + type + " " + resource_name + " -o yaml"
 		string = load(command)
 		return string
 
