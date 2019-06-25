@@ -10,8 +10,8 @@ import helpers
 # import textwrap
 # from time import sleep
 
-sys.path.insert(0, '../../../Collector/')
-sys.path.insert(0, '../../../Collector/skipper-collector/') # TODO WARNING this only works on my computer
+sys.path.insert(0, '../backend/') # TODO WARNING this only works on my computer
+# sys.path.insert(0, '../../../Collector/skipper-collector/')
 import app_hierarchy
 import cluster_view_backend as cluster_hierarchy
 # cluster_functions = inspect.getmembers(cluster_hierarchy, inspect.isfunction)
