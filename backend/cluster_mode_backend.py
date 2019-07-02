@@ -173,7 +173,7 @@ def cluster_as_json(cluster_name):
 	for ns in namespaces:
 		edges["Cluster<-Namespace"].append( [cname, ns] )
 
-		print("working on deployments.")
+		# print("working on deployments.")
 		deploy_names = namespace_deployment_names(ns, cname)
 		for deploy in deploy_names:
 			edges["Namespace<-Deployment"].append( [ns, deploy] )
@@ -181,7 +181,7 @@ def cluster_as_json(cluster_name):
 			for pod in pod_names:
 				edges["Deployment<-Pod"].append( [deploy, pod] )
 
-		print("working on daemon sets.")
+		# print("working on daemon sets.")
 		dset_names = namespace_daemon_set_names(ns, cname)
 		for dset in dset_names:
 			edges["Namespace<-DaemonSet"].append( [ns, dset] )
@@ -189,7 +189,7 @@ def cluster_as_json(cluster_name):
 			for pod in pod_names:
 				edges["DaemonSet<-Pod"].append( [dset, pod] )
 
-		print("working on stateful sets.")
+		# print("working on stateful sets.")
 		sset_names = namespace_stateful_set_names(ns, cname)
 		for sset in sset_names:
 			edges["Namespace<-StatefulSet"].append( [ns, sset] )
@@ -197,7 +197,7 @@ def cluster_as_json(cluster_name):
 			for pod in pod_names:
 				edges["StatefulSet<-Pod"].append( [sset, pod] )
 
-		print("working on services.")
+		# print("working on services.")
 		svc_names = namespace_service_names(ns, cname)
 		for svc in svc_names:
 			edges["Namespace<-Service"].append( [ns, svc] )
@@ -205,4 +205,5 @@ def cluster_as_json(cluster_name):
 			for pod in pod_names:
 				edges["Service<-Pod"].append( [svc, pod] )
 
-	return json.dumps(edges)
+	# return json.dumps(edges)
+	return edges

@@ -5,15 +5,18 @@ import copy
 from pyfiglet import Figlet
 from resource import Resource
 import helpers
+from requests.packages import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # import inspect
 # import subprocess
 # import textwrap
 # from time import sleep
 
-sys.path.insert(0, '../backend/') # TODO WARNING this only works on my computer
-# sys.path.insert(0, '../../../Collector/skipper-collector/')
+sys.path.insert(0, '../backend/')
+# sys.path.insert(0, '../../../Collector/skipper-collector/') # TODO WARNING this only works on my computer
 import app_hierarchy
-import cluster_view_backend as cluster_hierarchy
+import cluster_mode_backend as cluster_hierarchy
+import k8s_config
 # cluster_functions = inspect.getmembers(cluster_hierarchy, inspect.isfunction)
 
 # app_resources = {}
@@ -93,7 +96,8 @@ def get_parent_menu(current_path, current_type_path, mode, app_name, cluster): #
     return (parent_menu, parent_index, path, type_path)
 
 def get_cluster_menu():
-    clusters = cluster_hierarchy.all_cluster_names()
+    k8s_config.update_available_clusters()
+    clusters = k8s_config.all_cluster_names()
     menu = [Resource(c, 'Cluster') for c in clusters]
     return menu
 
@@ -225,7 +229,7 @@ def menu_main(menu_window, info_window, menu, path, type_path):
             mode = 'cluster'
             menu = get_cluster_menu()
             current_row = 0
-            cluster = menu[current_row].get_name()
+            cluster = menu[current_row].get_name() # TODO handle empty menu
             current_path = "/"
             current_type_path = "/"
         elif key == ord('2'): #and switch_mode:
