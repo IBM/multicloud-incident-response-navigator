@@ -1,7 +1,8 @@
 import curses, curses.panel
 import sys
 
-sys.path.insert(0, '../../../Collector/skipper-collector/') # TODO WARNING this only works on my computer
+# sys.path.insert(0, '../../../Collector/skipper-collector/') # TODO WARNING this only works on my computer
+sys.path.insert(0, '../backend/')
 from app_hierarchy import Application
 
 default_offset_x = 2

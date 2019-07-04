@@ -1,6 +1,10 @@
 # OSX
 .DS_Store
 
+# SQLAlchemy and flask-migrations stuff
+migrations/
+*.db
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
