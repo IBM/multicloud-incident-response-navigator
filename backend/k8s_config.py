@@ -1,11 +1,12 @@
 from typing import List, Dict
 from kubernetes import client, config
 import multiprocessing, time
-
+from requests.packages import urllib3
 
 # load kube-config when module is imported or run
 config.load_kube_config()
-
+# suppress warning when certificate-authority is not added to kubeconfig
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # cluster to context mapping
 cc_mapping = {}
 
@@ -50,11 +51,11 @@ def update_available_clusters() -> Dict:
 	for context in contexts:
 		context_name = context["name"]
 		cluster_name = context["context"]["cluster"]
-		
+
 		# check to see if request times out (0.2 sec)
 		liveness_test = multiprocessing.Process(target=test_liveness, name="list namespaces", args=(context_name,))
 		liveness_test.start()
-		time.sleep(.2)
+		time.sleep(1)
 
 		# check if thread is still running (timeout) or if
 		# 404 unauthorized exception was thrown

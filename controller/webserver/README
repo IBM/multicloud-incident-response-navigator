@@ -1,0 +1,11 @@
+This Flask webserver was developed by following the following two tutorials:
+https://blog.miguelgrinberg.com/post/the-flask-mega-tutorial-part-i-hello-world
+https://blog.miguelgrinberg.com/post/the-flask-mega-tutorial-part-iv-database
+
+If you want to turn SQLite output off, toggle the SQLALCHEMY_ECHO variable in config.py
+
+If you want to interact with the SQLite database using your python shell, run "flask shell".
+Don't use bpython.
+
+ValueError: Constraint must have a name
+https://stackoverflow.com/questions/45527323/flask-sqlalchemy-upgrade-failing-after-updating-models-need-an-explanation-on-h

@@ -33,9 +33,9 @@ def namespace_deployments(namespace: str, cluster_name: str) -> List[V1Deploymen
 	deploys = api_client.list_namespaced_deployment(namespace)
 	return deploys.items
 
-def namespace_deployment_names(namespace: str, cluster_name: str) -> List[str]:
+def namespace_deployment_names(namespace: str, cluster_name: str) -> List[ tuple ]:
 	deploys = namespace_deployments(namespace, cluster_name)
-	return [ d.metadata.name for d in deploys ]
+	return [ (d.metadata.name, d.metadata.uid) for d in deploys ]
 
 
 def namespace_services(namespace: str, cluster_name: str) -> List[V1Service]:
@@ -46,9 +46,9 @@ def namespace_services(namespace: str, cluster_name: str) -> List[V1Service]:
 	svcs = api_client.list_namespaced_service(namespace)
 	return svcs.items
 
-def namespace_service_names(namespace: str, cluster_name: str) -> List[str]:
+def namespace_service_names(namespace: str, cluster_name: str) -> List[ tuple ]:
 	svcs = namespace_services(namespace, cluster_name)
-	return [ s.metadata.name for s in svcs ]
+	return [ (s.metadata.name, s.metadata.uid) for s in svcs ]
 
 
 def namespace_stateful_sets(namespace: str, cluster_name: str) -> List[V1StatefulSet]:
@@ -59,9 +59,9 @@ def namespace_stateful_sets(namespace: str, cluster_name: str) -> List[V1Statefu
 	ssets = api_client.list_namespaced_stateful_set(namespace)
 	return ssets.items
 
-def namespace_stateful_set_names(namespace: str, cluster_name: str) -> List[str]:
+def namespace_stateful_set_names(namespace: str, cluster_name: str) -> List[ tuple ]:
 	ssets = namespace_stateful_sets(namespace, cluster_name)
-	return [ ss.metadata.name for ss in ssets ]
+	return [ (ss.metadata.name, ss.metadata.uid) for ss in ssets ]
 
 
 def namespace_daemon_sets(namespace: str, cluster_name: str) -> List[V1DaemonSet]:
@@ -72,9 +72,9 @@ def namespace_daemon_sets(namespace: str, cluster_name: str) -> List[V1DaemonSet
 	dsets = api_client.list_namespaced_daemon_set(namespace)
 	return dsets.items
 
-def namespace_daemon_set_names(namespace: str, cluster_name: str) -> List[str]:
+def namespace_daemon_set_names(namespace: str, cluster_name: str) -> List[ tuple ]:
 	dsets = namespace_daemon_sets(namespace, cluster_name)
-	return [ ds.metadata.name for ds in dsets ]
+	return [ (ds.metadata.name, ds.metadata.uid) for ds in dsets ]
 
 
 # need to add basic exception handling
@@ -87,9 +87,9 @@ def deployment_pods(deploy_name: str, namespace: str, cluster_name: str) -> List
 	selected_pods = CoreV1Api_client.list_namespaced_pod(namespace, label_selector = selector_str)
 	return selected_pods.items
 
-def deployment_pod_names(deploy_name: str, namespace: str, cluster_name: str) -> List[str]:
+def deployment_pod_names(deploy_name: str, namespace: str, cluster_name: str) -> List[ tuple ]:
 	pods = deployment_pods(deploy_name, namespace, cluster_name)
-	return [ p.metadata.name for p in pods]
+	return [ (p.metadata.name, p.metadata.uid) for p in pods]
 
 
 def daemon_set_pods(dset_name: str, namespace: str, cluster_name: str) -> List[V1Pod]:
@@ -115,9 +115,9 @@ def stateful_set_pods(sset_name: str, namespace: str, cluster_name: str) -> List
 	selected_pods = CoreV1Api_client.list_namespaced_pod(namespace, label_selector = selector_str)
 	return selected_pods.items
 
-def stateful_set_pod_names(sset_name: str, namespace: str, cluster_name: str) -> List[str]:
+def stateful_set_pod_names(sset_name: str, namespace: str, cluster_name: str) -> List[ tuple ]:
 	pods = stateful_set_pods(sset_name, namespace, cluster_name)
-	return [ p.metadata.name for p in pods ]
+	return [ (p.metadata.name, p.metadata.uid) for p in pods ]
 
 
 def service_pods(svc_name: str, namespace: str, cluster_name: str) -> List[V1Pod]:
@@ -130,9 +130,9 @@ def service_pods(svc_name: str, namespace: str, cluster_name: str) -> List[V1Pod
 	selected_pods = CoreV1Api_client.list_namespaced_pod(namespace, label_selector = selector_str)
 	return selected_pods.items
 
-def service_pod_names(svc_name: str, namespace: str, cluster_name: str) -> List[str]:
+def service_pod_names(svc_name: str, namespace: str, cluster_name: str) -> List[ tuple ]:
 	pods = service_pods(svc_name, namespace, cluster_name)
-	return [ p.metadata.name for p in pods ]
+	return [ (p.metadata.name, p.metadata.uid) for p in pods ]
 
 
 # need to add basic exception handling
@@ -151,8 +151,6 @@ def pod_logs(pod_name: str, namespace: str, cluster_name: str) -> str:
 	api_client = k8s_api.api_client(cluster_name, "CoreV1Api")
 	logs = api_client.read_namespaced_pod_log(name=pod_name, namespace=namespace)
 	return logs
-
-
 
 # Patricia: json function here
 def cluster_as_json(cluster_name):

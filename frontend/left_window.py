@@ -90,8 +90,9 @@ def set_contents(mode: str,
 					col_widths: List[int],
 					table: List[ List[str] ],
 					row_selector: int,
-					path: List[str] = [],
-					rtypes: List[str] = []) -> None:
+					path: List[str],
+					rtypes: List[str],
+				 	table_uids: List[str]) -> None:
 	"""
 	Sets relevant content variables based on given arguments.
 
@@ -121,6 +122,7 @@ def set_contents(mode: str,
 	this.row_selector = row_selector
 	this.path = path
 	this.rtypes = rtypes
+	this.table_uids = table_uids
 
 	if mode in ["app", "cluster"]:
 		this.thx, this.thy = 0,this.bc_height	# relative x,y inside left_window
@@ -251,16 +253,20 @@ def draw() -> None:
 
 def move_up():
 	# decrements this.row_selector and redraws window, if necessary
+	# returns updated row_selector
 	if this.row_selector > 0:
 		this.row_selector -= 1
 		this.draw()
+	return this.table_uids[this.row_selector]
 
 
 def move_down():
 	# increments this.row_selector and redraws window, if necessary
+	# returns updated row_selector
 	if this.row_selector < len(table)-1:
 		this.row_selector += 1
 		this.draw()
+	return this.table_uids[this.row_selector]
 
 
 def get_selected_row():

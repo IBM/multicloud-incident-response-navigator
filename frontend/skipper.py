@@ -3,6 +3,7 @@ import skipper_helpers as shs
 import curses_helpers as chs
 import left_window as lwin
 import top_window as twin
+import requests
 
 
 def run_skipper(stdscr):
@@ -15,7 +16,7 @@ def run_skipper(stdscr):
 	Returns:	None
 	"""
 
-	START_MODE = "app"	# possible modes include app, cluster, query, anomaly
+	START_MODE = "cluster"	# possible modes include app, cluster, query, anomaly
 
 
 	# initialize stdscr (standard screen)
@@ -32,22 +33,29 @@ def run_skipper(stdscr):
 	# initialize and draw left window
 	top_height, top_width = twin.window.getmaxyx()
 	lwin.init_win(stdscr, height=height-top_height, width=width//2, y=top_height, x=0)
-	sample_data = {	"mode": START_MODE,
+
+	# get the data for the initial cluster mode screen that lists all clusters
+	# data = requests.get('http://127.0.0.1:5000/start/{}'.format(START_MODE)).json() # load everything, which involves creating the db tables, takes a LONG time
+	# data = requests.get('http://127.0.0.1:5000/mode/app/switch/mycluster_537676e1-9201-11e9-b68f-0e70a6ce6d3a').json() # for debugging, when db is already populated
+	data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/mycluster').json()  # for debugging, when db is already populated
+
+	table_data = {	"mode": START_MODE,
 					"col_names": ["type", "name"],
 					"col_widths": [20,20],
-					"table": [
-						["Application", "gbapp-gbapp"],
-						["Application", "bookinfo"],
-						["Application", "stock-trader"] ]*10,
-					"row_selector": 0,
-					"path": ["mycluster", "default", "Deployments", "boisterous-shark-gbapp-frontend"],
-					"rtypes": ["cluster", "ns", "rtype", "deployment"] }
-	lwin.set_contents(*sample_data.values())
+					"table": [[t_item['rtype'], t_item['name']] for t_item in data['table_items']],
+					"row_selector": data['index'],
+					"path": data['path'],
+					"rtypes": data['rtypes'],
+					"table_uids": [t_item['uid'] for t_item in data['table_items']]}
+
+	current_uid = table_data['table_uids'][table_data['row_selector']]
+
+	lwin.set_contents(*table_data.values())
 	lwin.draw()
 
 
 	# state that needs to be tracked
-	mode = "app"
+	mode = START_MODE
 	c = 0
 
 
@@ -59,31 +67,73 @@ def run_skipper(stdscr):
 		if c == ord('1'):		# cluster mode
 			mode = "cluster"
 			twin.draw(mode="cluster")
-			sample_data["mode"] = "cluster"
-			lwin.set_contents(*sample_data.values())
+			table_data["mode"] = mode
+			data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, current_uid)).json()
+			table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
+			table_data['row_selector'] = data['index']
+			table_data['path'] = data['path']
+			table_data['rtypes'] = data['rtypes']
+			table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+			current_uid = table_data['table_uids'][table_data['row_selector']]
+			lwin.set_contents(*table_data.values())
 			lwin.draw()
 		elif c == ord('2'):		# app mode
 			mode = "app"
 			twin.draw(mode="app")
-			sample_data["mode"] = "app"
-			lwin.set_contents(*sample_data.values())
+			table_data["mode"] = mode
+			data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, current_uid)).json()
+			table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
+			table_data['row_selector'] = data['index']
+			table_data['path'] = data['path']
+			table_data['rtypes'] = data['rtypes']
+			table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+			current_uid = table_data['table_uids'][table_data['row_selector']]
+			lwin.set_contents(*table_data.values())
 			lwin.draw()
 		elif c == ord('3'):		# anomaly mode
 			mode = "anomaly"
 			twin.draw(mode="anomaly")
-			sample_data["mode"] = "anomaly"
-			lwin.set_contents(*sample_data.values())
+			table_data["mode"] = mode
+			# TODO update the data with list of anomalous resources
+			lwin.set_contents(*table_data.values())
 			lwin.draw()
 		elif c == ord('4'):		# query mode
 			mode = "query"
 			twin.draw(mode="query")
-			sample_data["mode"] = "query"
-			lwin.set_contents(*sample_data.values())
+			table_data["mode"] = mode
+			lwin.set_contents(*table_data.values())
 			lwin.draw()
 		elif c == curses.KEY_UP:
-			lwin.move_up()
+			current_uid = lwin.move_up()
 		elif c == curses.KEY_DOWN:
-			lwin.move_down()
+			current_uid = lwin.move_down()
+		elif c == curses.KEY_RIGHT:
+			# gets the children of the current resource and other relevant info
+			data = requests.get('http://127.0.0.1:5000/mode/{}/{}'.format(mode,current_uid)).json()
+			if len(data['table_items']) > 0:
+				# update and redraw
+				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
+				table_data['row_selector'] = data['index']
+				table_data['path'] = data['path']
+				table_data['rtypes'] = data['rtypes']
+				table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+				current_uid = table_data['table_uids'][table_data['row_selector']]
+				lwin.set_contents(*table_data.values())
+				lwin.draw()
+		elif c == curses.KEY_LEFT:
+			current_resource = requests.get('http://127.0.0.1:5000/resource/{}'.format(current_uid)).json()['data']
+			if current_resource['rtype'] not in ['Application', 'Cluster']:
+				# gets the siblings of the parent resource (including parent) and other relevant info
+				parent_uid = current_resource['{}_path'.format(mode)].split("/")[-2]
+				data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, parent_uid)).json()
+				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
+				table_data['row_selector'] = data['index']
+				table_data['path'] = data['path']
+				table_data['rtypes'] = data['rtypes']
+				table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+				current_uid = table_data['table_uids'][table_data['row_selector']]
+				lwin.set_contents(*table_data.values())
+				lwin.draw()
 
 
 def main():
