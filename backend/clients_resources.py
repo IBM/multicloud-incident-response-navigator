@@ -4,6 +4,7 @@ from pprint import pprint
 import cluster_mode_backend as cm
 import application as app
 import clients_resources as cr
+import app_mode_backend as amb
 
 def get_resources(clusters, clients, active_cluster):
 	jsons = {}
@@ -17,13 +18,9 @@ def get_resources(clusters, clients, active_cluster):
 		jsons[cluster]["DaemonSet"] = clients[cluster]["apps_client"].list_daemon_set_for_all_namespaces().items
 		jsons[cluster]["StatefulSet"] = clients[cluster]["apps_client"].list_stateful_set_for_all_namespaces().items
 		jsons[cluster]["Job"] = clients[cluster]["batch_client"].list_job_for_all_namespaces().items
-		try:
-			items =  clients[cluster]["customs_client"].list_cluster_custom_object('mcm.ibm.com','v1alpha1', 'deployables')['items']
-			jsons[cluster]["Deployable"] = items
-		except:
-			jsons[cluster]["Deployable"] = {}
+		jsons[cluster]["Application"] = amb.cluster_applications(cluster)
+		jsons[cluster]["Deployable"] = amb.cluster_deployables(cluster)
 
-	jsons[active_cluster]["Application"] = clients[active_cluster]["customs_client"].list_cluster_custom_object('app.k8s.io', 'v1beta1', 'applications')['items']
 	return jsons
 
 def get_clients(): # returns clients (6 types) for each cluster, active cluster name, and jsons of resources
@@ -90,7 +87,7 @@ def order_edges_and_paths(jsons):
 	app_paths = {}
 	k8s_config.update_available_clusters()
 	clusters, k8clients , active_cluster = cr.get_clients()
-	app_dicts = k8clients[active_cluster]["customs_client"].list_cluster_custom_object('app.k8s.io', 'v1beta1', 'applications')
+	app_dicts = { "items": amb.all_applications() }
 
 	# pass in cluster paths dict to app, build it as resources are being fetched, then return
 	for app_dict in app_dicts["items"]:

@@ -35,9 +35,9 @@ def run_skipper(stdscr):
 	lwin.init_win(stdscr, height=height-top_height, width=width//2, y=top_height, x=0)
 
 	# get the data for the initial cluster mode screen that lists all clusters
-	# data = requests.get('http://127.0.0.1:5000/start/{}'.format(START_MODE)).json() # load everything, which involves creating the db tables, takes a LONG time
+	data = requests.get('http://127.0.0.1:5000/start/{}'.format(START_MODE)).json() # load everything, which involves creating the db tables, takes a LONG time
 	# data = requests.get('http://127.0.0.1:5000/mode/app/switch/mycluster_537676e1-9201-11e9-b68f-0e70a6ce6d3a').json() # for debugging, when db is already populated
-	data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/mycluster').json()  # for debugging, when db is already populated
+	# data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/mycluster').json()  # for debugging, when db is already populated
 
 	table_data = {	"mode": START_MODE,
 					"col_names": ["type", "name"],
