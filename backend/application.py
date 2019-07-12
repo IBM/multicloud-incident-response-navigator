@@ -180,7 +180,6 @@ class Application: # gets graph for application view
 				self.resourceSummaries["ReplicaSet"][name] = rs.get_rs_summary(rep)
 				dpm_uid = cluster+'_'+ownerUID
 				rs_uid = cluster+'_'+uid
-				self.edges.add((dpm_uid, rs_uid, "Deployment<-ReplicaSet"))
 				self.paths[rs_uid] = self.paths[dpm_uid] + dpm_uid + "/"
 
 	def load_pods(self, cluster): # this is where replica<-pod edges are built
@@ -205,8 +204,11 @@ class Application: # gets graph for application view
 					self.relations_dict[ownerKind+"<-Pod"].add((set_name, pod_name))
 					self.resourceSummaries["Pod"][pod_name] = rs.get_pod_summary(pod, cluster)
 					set_uid = cluster+'_'+ownerUID
-					self.edges.add((set_uid, pod_uid, ownerKind+"<-Pod"))
-					self.paths[pod_uid] = self.paths[set_uid] + set_uid + "/"
+					if ownerKind == "ReplicaSet":
+						self.paths[pod_uid] = self.paths[set_uid]
+					else:
+						self.edges.add((set_uid, pod_uid, ownerKind+"<-Pod"))
+						self.paths[pod_uid] = self.paths[set_uid] + set_uid + "/"
 
 			if labels: # getting selecting service for a pod
 				labels = [(l, labels[l]) for l in labels.keys()]
@@ -221,7 +223,6 @@ class Application: # gets graph for application view
 							svc_path = self.paths.get(svc_uid)
 							if svc_path:
 								self.edges.add((svc_uid, pod_uid, "Service<-Pod"))
-								self.paths[pod_uid] = svc_path + svc_uid + "/"
 
 
 			else:

@@ -39,18 +39,19 @@ def run_skipper(stdscr):
 	# data = requests.get('http://127.0.0.1:5000/mode/app/switch/mycluster_537676e1-9201-11e9-b68f-0e70a6ce6d3a').json() # for debugging, when db is already populated
 	# data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/mycluster').json()  # for debugging, when db is already populated
 
-	table_data = {	"mode": START_MODE,
-					"col_names": ["type", "name"],
-					"col_widths": [20,20],
-					"table": [[t_item['rtype'], t_item['name']] for t_item in data['table_items']],
-					"row_selector": data['index'],
-					"path": data['path'],
-					"rtypes": data['rtypes'],
-					"table_uids": [t_item['uid'] for t_item in data['table_items']]}
+	if len(data['table_items']) > 0:
+		table_data = {	"mode": START_MODE,
+						"col_names": ["type", "name"],
+						"col_widths": [20,20],
+						"table": [[t_item['rtype'], t_item['name']] for t_item in data['table_items']],
+						"row_selector": data['index'],
+						"path_names": data['path_names'],
+						"path_rtypes": data['path_rtypes'],
+						"path_uids": data['path_uids'],
+						"table_uids": [t_item['uid'] for t_item in data['table_items']]}
+		current_uid = table_data['table_uids'][table_data['row_selector']]
+		lwin.set_contents(*table_data.values())
 
-	current_uid = table_data['table_uids'][table_data['row_selector']]
-
-	lwin.set_contents(*table_data.values())
 	lwin.draw()
 
 
@@ -65,31 +66,35 @@ def run_skipper(stdscr):
 		c = stdscr.getch()
 
 		if c == ord('1'):		# cluster mode
-			mode = "cluster"
-			twin.draw(mode="cluster")
-			table_data["mode"] = mode
-			data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, current_uid)).json()
-			table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
-			table_data['row_selector'] = data['index']
-			table_data['path'] = data['path']
-			table_data['rtypes'] = data['rtypes']
-			table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
-			current_uid = table_data['table_uids'][table_data['row_selector']]
-			lwin.set_contents(*table_data.values())
-			lwin.draw()
+			data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/{}'.format(current_uid)).json()
+			if len(data['table_items']) > 0:
+				mode = "cluster"
+				twin.draw(mode=mode)
+				table_data["mode"] = mode
+				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
+				table_data['row_selector'] = data['index']
+				table_data['path_names'] = data['path_names']
+				table_data['path_rtypes'] = data['path_rtypes']
+				table_data['path_uids'] = data['path_uids']
+				table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+				current_uid = table_data['table_uids'][table_data['row_selector']]
+				lwin.set_contents(*table_data.values())
+				lwin.draw()
 		elif c == ord('2'):		# app mode
-			mode = "app"
-			twin.draw(mode="app")
-			table_data["mode"] = mode
-			data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, current_uid)).json()
-			table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
-			table_data['row_selector'] = data['index']
-			table_data['path'] = data['path']
-			table_data['rtypes'] = data['rtypes']
-			table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
-			current_uid = table_data['table_uids'][table_data['row_selector']]
-			lwin.set_contents(*table_data.values())
-			lwin.draw()
+			data = requests.get('http://127.0.0.1:5000/mode/app/switch/{}'.format(current_uid)).json()
+			if len(data['table_items']) > 0:
+				mode = "app"
+				twin.draw(mode=mode)
+				table_data["mode"] = mode
+				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
+				table_data['row_selector'] = data['index']
+				table_data['path_names'] = data['path_names']
+				table_data['path_rtypes'] = data['path_rtypes']
+				table_data['path_uids'] = data['path_uids']
+				table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+				current_uid = table_data['table_uids'][table_data['row_selector']]
+				lwin.set_contents(*table_data.values())
+				lwin.draw()
 		elif c == ord('3'):		# anomaly mode
 			mode = "anomaly"
 			twin.draw(mode="anomaly")
@@ -108,14 +113,16 @@ def run_skipper(stdscr):
 		elif c == curses.KEY_DOWN:
 			current_uid = lwin.move_down()
 		elif c == curses.KEY_RIGHT:
+			parent_uid = current_uid
 			# gets the children of the current resource and other relevant info
 			data = requests.get('http://127.0.0.1:5000/mode/{}/{}'.format(mode,current_uid)).json()
 			if len(data['table_items']) > 0:
 				# update and redraw
 				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
 				table_data['row_selector'] = data['index']
-				table_data['path'] = data['path']
-				table_data['rtypes'] = data['rtypes']
+				table_data['path_names'] = data['path_names']
+				table_data['path_rtypes'] = data['path_rtypes']
+				table_data['path_uids'] = data['path_uids']
 				table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
 				current_uid = table_data['table_uids'][table_data['row_selector']]
 				lwin.set_contents(*table_data.values())
@@ -124,12 +131,13 @@ def run_skipper(stdscr):
 			current_resource = requests.get('http://127.0.0.1:5000/resource/{}'.format(current_uid)).json()['data']
 			if current_resource['rtype'] not in ['Application', 'Cluster']:
 				# gets the siblings of the parent resource (including parent) and other relevant info
-				parent_uid = current_resource['{}_path'.format(mode)].split("/")[-2]
+				parent_uid = table_data['path_uids'][-1]
 				data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, parent_uid)).json()
 				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
 				table_data['row_selector'] = data['index']
-				table_data['path'] = data['path']
-				table_data['rtypes'] = data['rtypes']
+				table_data['path_names'] = data['path_names']
+				table_data['path_rtypes'] = data['path_rtypes']
+				table_data['path_uids'] = data['path_uids']
 				table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
 				current_uid = table_data['table_uids'][table_data['row_selector']]
 				lwin.set_contents(*table_data.values())

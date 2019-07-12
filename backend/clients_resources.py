@@ -57,6 +57,8 @@ def order_resources(jsons):
 			uids[skipper_uid] = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns, "cluster": cluster, "namespace": ns}
 		# add all other resources
 		for rtype in jsons[cluster]:
+			if rtype == 'ReplicaSet':
+				continue
 			for resource in jsons[cluster][rtype]:
 				if rtype not in ["Deployable", "Application"]:
 					resource = resource.to_dict()
@@ -117,7 +119,6 @@ def order_edges_and_paths(jsons):
 				pods = cm.deployment_pod_names(deploy[0], ns, cluster)
 				for pod in pods:
 					pod_uid = cluster+'_'+pod[1]
-					path_to_pod = path_to_deploy + pod_uid + "/"
 					cluster_paths[pod_uid] = path_to_deploy
 					edges.add(( deploy_uid, pod_uid, "Deployment<-Pod"))
 
@@ -130,7 +131,6 @@ def order_edges_and_paths(jsons):
 				pods = cm.daemon_set_pod_names(dset[0], ns, cluster)
 				for pod in pods:
 					pod_uid = cluster + "_" + pod[1]
-					path_to_pod = path_to_dset + pod_uid + "/"
 					cluster_paths[pod_uid] = path_to_dset
 					edges.add((dset_uid, pod_uid, "DaemonSet<-Pod"))
 
@@ -143,21 +143,17 @@ def order_edges_and_paths(jsons):
 				pods = cm.stateful_set_pod_names(sset[0], ns, cluster)
 				for pod in pods:
 					pod_uid = cluster + "_" + pod[1]
-					path_to_pod = path_to_sset + pod_uid + "/"
 					cluster_paths[pod_uid] = path_to_sset
 					edges.add((sset_uid, pod_uid, "StatefulSet<-Pod"))
 
 			svcs = cm.namespace_service_names(ns, cluster)
 			for svc in svcs:
 				svc_uid = cluster + "_" + svc[1]
-				path_to_svc = path_to_ns + svc_uid + "/"
 				cluster_paths[svc_uid] = path_to_ns
 				edges.add((ns_uid, svc_uid, "Namespace<-Service"))
 				pods = cm.service_pod_names(svc[0], ns, cluster)
 				for pod in pods:
 					pod_uid = cluster + "_" + pod[1]
-					path_to_pod = path_to_svc + pod_uid + "/"
-					cluster_paths[pod_uid] = path_to_svc
 					edges.add((svc_uid, pod_uid, "Service<-Pod"))
 
 			### end of cluster mode edges

@@ -32,11 +32,13 @@ import curses_helpers as chs
 this = sys.modules[__name__]	# used to reference module variables
 
 mode = "app"
-path = []				# path to display in breadcrumbs window
-rtypes = []				# resource types of items in the path
+path_names = []			# path to display in breadcrumbs window
+path_rtypes = []		# resource types of items in the path
+path_uids = []			# uids of items in path
 col_names = []			# column header names
 col_widths = []			# width of each column
-table = [[]]			# rows of data to be displayed in table window (curses.pad)
+table = []				# rows of data to be displayed in table window (curses.pad)
+table_uids = []			# uids for each resource in the table
 row_selector = 0		# which row of the table should be highlighted
 
 bc_height = 4			# height of the breadcrumbs window
@@ -90,8 +92,9 @@ def set_contents(mode: str,
 					col_widths: List[int],
 					table: List[ List[str] ],
 					row_selector: int,
-					path: List[str],
-					rtypes: List[str],
+					path_names: List[str],
+					path_rtypes: List[str],
+				 	path_uids: List[str],
 				 	table_uids: List[str]) -> None:
 	"""
 	Sets relevant content variables based on given arguments.
@@ -105,12 +108,17 @@ def set_contents(mode: str,
 					Rows of information to display in the table.
 				(int) row_selector
 					Index of which row should be highlighted.
-				(List[str]) path
+				(List[str]) path_names
 					For app and cluster mode.
 					List of resource names to display in breadcrumb window.
-				(List[str]) rtypes
+				(List[str]) path_rtypes
 					For app and cluster mode.
 					List of resource types corresponding to the above resource names.
+				(List[str]) path_uids
+					For app and cluster mode.
+					List of resource uids corresponding to the above resource names.
+				(List[str]) table_uids
+					List of uids for resources in table
 	Returns: 	None
 	"""
 
@@ -120,8 +128,9 @@ def set_contents(mode: str,
 	this.col_widths = col_widths
 	this.table = table
 	this.row_selector = row_selector
-	this.path = path
-	this.rtypes = rtypes
+	this.path_names = path_names
+	this.path_rtypes = path_rtypes
+	this.path_uids = path_uids
 	this.table_uids = table_uids
 
 	if mode in ["app", "cluster"]:
@@ -136,7 +145,7 @@ def set_contents(mode: str,
 
 def draw_bc_window(bc_window) -> None:
 	"""
-	Draws this.path and this.rtypes in the given breadcrumb window.
+	Draws this.path_names and this.path_rtypes in the given breadcrumb window.
 
 	Arguments: 	(_curses.window) bc_window
 					_curses.window object that represents the breadcrumb window
@@ -149,7 +158,7 @@ def draw_bc_window(bc_window) -> None:
 	
 	# calculate and apply padding for resource labels that go below path
 	padded_rtypes = []
-	for name, rtype in zip(path, rtypes):
+	for name, rtype in zip(path_names, path_rtypes):
 		nlen, rtlen = len(name), len(rtype)
 		left_padding = (nlen-rtlen) - (nlen-rtlen)//2
 		right_padding = (nlen-rtlen)//2 + 3
@@ -157,7 +166,7 @@ def draw_bc_window(bc_window) -> None:
 		padded_rtypes.append(padded_str)
 
 	# create strings to be displayed
-	path_str = "/ " + " / ".join(path)
+	path_str = "/ " + " / ".join(path_names)
 	type_str = 2 * " " + "".join(padded_rtypes)
 
 	bc_window.addstr(1, this.LEFT_PADDING, path_str)

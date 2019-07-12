@@ -61,7 +61,7 @@ def start(mode):
 		table = db.session.query(Resource).filter(Resource.rtype == "Cluster").all()
 	table_dicts = [row_to_dict(table_item) for table_item in table]
 
-	return jsonify(path=[], rtypes= [], table_items=table_dicts, index=0)
+	return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
 
 
 @app.route('/resource/<uid>', methods=['POST', 'PUT', 'GET', 'DELETE'])
@@ -144,13 +144,16 @@ def switch_mode(new_mode, uid):
 									current_resource (Resource)
 	"""
 
+	root_rtype = "Cluster" if new_mode == 'cluster' else "Application"
 	if new_mode == 'app':
 		full_path = db.session.query(Resource.app_path).filter_by(uid=uid).first()[0]
 	elif new_mode == 'cluster':
 		full_path = db.session.query(Resource.cluster_path).filter_by(uid=uid).first()[0]
 	print(full_path)
-	if full_path == None: # TODO cannot switch to new_mode from the current resource, currently leaves frontend to deal with this
-		return jsonify(path=[], rtypes=[], table_items=[], index=0)
+	if full_path == None: # cannot switch to new_mode from the current resource, currently leaves frontend to deal with this
+		table = db.session.query(Resource).filter(Resource.rtype == root_rtype).all()
+		table_dicts = [row_to_dict(table_item) for table_item in table]
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
 
 	parent = full_path.split("/")[-2]
 
@@ -170,13 +173,14 @@ def switch_mode(new_mode, uid):
 			break
 
 	# convert path using uids to breadcrumbs of resource names and types
-	path = []
-	rtypes = []
-	for res_uid in full_path.split("/")[2:-1]:
-		path.append(db.session.query(Resource.name).filter(Resource.uid == res_uid).first()[0])
-		rtypes.append(db.session.query(Resource.rtype).filter(Resource.uid == res_uid).first()[0])
+	path_uids = full_path.split("/")[2:-1]
+	path_names = []
+	path_rtypes = []
+	for res_uid in path_uids:
+		path_names.append(db.session.query(Resource.name).filter(Resource.uid == res_uid).first()[0])
+		path_rtypes.append(db.session.query(Resource.rtype).filter(Resource.uid == res_uid).first()[0])
 
-	return jsonify(path=path, rtypes=rtypes, table_items=[row_to_dict(sib) for sib in siblings], index=index)
+	return jsonify(path_names=path_names, path_rtypes=path_rtypes, path_uids=path_uids, table_items=[row_to_dict(sib) for sib in siblings], index=index)
 
 @app.route('/mode/<mode>/<uid>')
 def get_table_by_resource(mode, uid):
@@ -191,6 +195,10 @@ def get_table_by_resource(mode, uid):
 									current_resource (Resource)
     """
 
+	children = db.session.query(Resource).join(Edge, Resource.uid == Edge.end_uid).filter(Edge.start_uid == uid).all()
+	if len(children) == 0:
+		return jsonify(table_items=[])
+
 	if mode == 'app':
 		full_path = db.session.query(Resource.app_path).filter_by(uid=uid).first()[0]
 	elif mode == 'cluster':
@@ -199,15 +207,14 @@ def get_table_by_resource(mode, uid):
 	full_path += "{}/".format(uid)
 
 	# convert path using uids to breadcrumbs of resource names and types
-	path = []
-	rtypes = []
-	for res_uid in full_path.split("/")[2:-1]:
-		path.append(db.session.query(Resource.name).filter(Resource.uid == res_uid).first()[0])
-		rtypes.append(db.session.query(Resource.rtype).filter(Resource.uid == res_uid).first()[0])
+	path_uids = full_path.split("/")[2:-1]
+	path_names = []
+	path_rtypes = []
+	for res_uid in path_uids:
+		path_names.append(db.session.query(Resource.name).filter(Resource.uid == res_uid).first()[0])
+		path_rtypes.append(db.session.query(Resource.rtype).filter(Resource.uid == res_uid).first()[0])
 
-	children = db.session.query(Resource).join(Edge, Resource.uid == Edge.end_uid).filter(Edge.start_uid == uid).all()
-
-	return jsonify(path=path, rtypes=rtypes, table_items=[row_to_dict(child) for child in children], index=0)
+	return jsonify(path_names=path_names, path_rtypes=path_rtypes, path_uids=path_uids, table_items=[row_to_dict(child) for child in children], index=0)
 
 # @app.route('/errors')
 # def get_errors():
