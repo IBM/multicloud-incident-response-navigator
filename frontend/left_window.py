@@ -246,18 +246,17 @@ def draw() -> None:
 	if this.mode == "app" or this.mode == "cluster":
 		bc_window = window.derwin(this.bc_height,this.width, this.bcy,this.bcx)	# nlines, ncols, rel_y, rel_x
 		draw_bc_window(bc_window)
+		bc_window.refresh()
 
 	# initialize and draw table header window
 	th_window = window.derwin(this.th_height,this.width, this.thy,this.thx)	# nlines, ncols, rel_y, rel_x
 	draw_tr_window(th_window, this.col_names)
+	th_window.refresh()
 
 	# initialize and draw table window (of type _curses.pad)
 	pad_height = max(this.table_height, this.tr_height * len(this.table))
 	table_window = curses.newpad( pad_height, this.width )	# nlines, ncols, start_y, start_x
 	draw_table_window(table_window)
-
-	# refresh the window before the table, o/w window will cover the table
-	window.refresh()
 
 	# scroll down if we are at the bottom of the page
 	if this.row_selector * this.tr_height >= this.table_start_y + this.table_height - this.tr_height:

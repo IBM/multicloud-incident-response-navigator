@@ -114,7 +114,7 @@ def run_skipper(stdscr):
 			current_uid = lwin.move_up()
 		elif c == curses.KEY_DOWN:
 			current_uid = lwin.move_down()
-		elif c == curses.KEY_RIGHT:
+		elif c == curses.KEY_RIGHT or c == 10:	# 10 is ENTER
 			parent_uid = current_uid
 			# gets the children of the current resource and other relevant info
 			data = requests.get('http://127.0.0.1:5000/mode/{}/{}'.format(mode,current_uid)).json()

@@ -34,7 +34,7 @@ def print_center(stdscr, text_lines: List[str]) -> None:
 				(List[str]) text_lines
 	"""
 
-	stdscr.clear()
+	stdscr.erase()
 	h, w = stdscr.getmaxyx()
 	for i, line in enumerate(text_lines):
 		x = w // 2 - len(line) // 2
