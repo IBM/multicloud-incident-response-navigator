@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# enter into virtualenv
+source venv/bin/activate
+
+# start webserver in background
+cd ./controller/webserver
+flask run > flask.log 2>&1 &
+FLASK_PID=$!
+
+# wait until webserver is ready
+while ! curl http://127.0.0.1:5000 -m1 -o/dev/null -s ; do
+  sleep 1
+  echo "Waiting for flask webserver to start..."
+done
+
+# run skipper frontend
+cd ../../frontend
+python3 skipper.py
+
+# when user exits skipper
+deactivate
+kill $FLASK_PID

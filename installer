@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# create and activate virtualenv
+pip3 install virtualenv
+virtualenv --python=python3 venv
+source venv/bin/activate
+
+# install dependencies using pip
+pip3 install -r requirements.txt
+
+# exit virtualenv
+deactivate
+
+# give skipper executable +x permissions
+chmod +x ./skipper
