@@ -59,6 +59,8 @@ bc_window = None		# _curses.window object that represents the breadcrumbs window
 th_window = None		# _curses.window object that represents that table headers window
 table_window = None		# _curses.pad object that represents that table window
 
+table_start_y = 0		# starting row of table pad
+
 LEFT_PADDING = 5
 
 
@@ -92,6 +94,7 @@ def set_contents(mode: str,
 					col_widths: List[int],
 					table: List[ List[str] ],
 					row_selector: int,
+					start_y: int,
 					path_names: List[str],
 					path_rtypes: List[str],
 				 	path_uids: List[str],
@@ -128,6 +131,7 @@ def set_contents(mode: str,
 	this.col_widths = col_widths
 	this.table = table
 	this.row_selector = row_selector
+	this.table_start_y = start_y
 	this.path_names = path_names
 	this.path_rtypes = path_rtypes
 	this.path_uids = path_uids
@@ -255,9 +259,15 @@ def draw() -> None:
 	# refresh the window before the table, o/w window will cover the table
 	window.refresh()
 
-	# calculate appropriate position in table to display based on this.row_selector
-	pad_start_y = max(0, this.tr_height + row_selector * this.tr_height - this.table_height)
-	table_window.refresh(pad_start_y,0, this.table_y,this.table_x, this.end_y,this.end_x)
+	# scroll down if we are at the bottom of the page
+	if this.row_selector * this.tr_height >= this.table_start_y + this.table_height - this.tr_height:
+		this.table_start_y += this.tr_height
+	
+	# scroll up if we are at the top of the page
+	elif this.row_selector * this.tr_height <= this.table_start_y - this.tr_height:
+		this.table_start_y -= this.tr_height
+	
+	table_window.refresh(this.table_start_y,0, this.table_y,this.table_x, this.end_y,this.end_x)
 
 
 def move_up():

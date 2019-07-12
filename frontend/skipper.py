@@ -45,6 +45,7 @@ def run_skipper(stdscr):
 						"col_widths": [20,20],
 						"table": [[t_item['rtype'], t_item['name']] for t_item in data['table_items']],
 						"row_selector": data['index'],
+						"start_y": 0,
 						"path_names": data['path_names'],
 						"path_rtypes": data['path_rtypes'],
 						"path_uids": data['path_uids'],
@@ -58,6 +59,7 @@ def run_skipper(stdscr):
 	# state that needs to be tracked
 	mode = START_MODE
 	c = 0
+	ltable = []		# stack to keep track of table_start_y and row selector positions
 
 
 	# start listening for keystrokes, and act accordingly
@@ -117,9 +119,14 @@ def run_skipper(stdscr):
 			# gets the children of the current resource and other relevant info
 			data = requests.get('http://127.0.0.1:5000/mode/{}/{}'.format(mode,current_uid)).json()
 			if len(data['table_items']) > 0:
+
+				# save row selector and start_y for table
+				ltable.append( (lwin.table_start_y, lwin.row_selector) )
+
 				# update and redraw
 				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
 				table_data['row_selector'] = data['index']
+				table_data['start_y'] = 0
 				table_data['path_names'] = data['path_names']
 				table_data['path_rtypes'] = data['path_rtypes']
 				table_data['path_uids'] = data['path_uids']
@@ -128,6 +135,12 @@ def run_skipper(stdscr):
 				lwin.set_contents(*table_data.values())
 				lwin.draw()
 		elif c == curses.KEY_LEFT:
+
+			# retrieve row selector and start_y for table
+			start_y, row_selector = 0,0
+			if len(ltable) != 0:
+				start_y, row_selector = ltable.pop()
+
 			current_resource = requests.get('http://127.0.0.1:5000/resource/{}'.format(current_uid)).json()['data']
 			if current_resource['rtype'] not in ['Application', 'Cluster']:
 				# gets the siblings of the parent resource (including parent) and other relevant info
@@ -135,6 +148,7 @@ def run_skipper(stdscr):
 				data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, parent_uid)).json()
 				table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
 				table_data['row_selector'] = data['index']
+				table_data['start_y'] = start_y
 				table_data['path_names'] = data['path_names']
 				table_data['path_rtypes'] = data['path_rtypes']
 				table_data['path_uids'] = data['path_uids']
