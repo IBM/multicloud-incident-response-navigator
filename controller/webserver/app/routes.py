@@ -5,10 +5,12 @@ import sys
 import requests
 import datetime
 from dateutil.parser import parse
+import sqlalchemy
 
 sys.path.insert(0,'../../backend')
 # sys.path.insert(0,'../crawler')
 import apps, clients_resources
+import k8s_config
 
 def row_to_dict(row):
 	d = {}
@@ -21,6 +23,13 @@ def row_to_dict(row):
 def index():
 	return "Hello, World!"
 
+
+@app.route('/cluster_names')
+def get_cluster_names():
+	k8s_config.update_available_clusters()
+	cluster_names = k8s_config.all_cluster_names()
+	return jsonify(names=cluster_names)
+
 @app.route('/start/<mode>')
 def start(mode):
 	"""
@@ -32,36 +41,48 @@ def start(mode):
 									table (List[Dict], list of dictionaries for resources to be displayed),
 									current_resource (Resource)
 	"""
-	db.drop_all()
-	db.create_all()
 
-	# get all resources (app and cluster)
-	clusters, clients, active_clusters = clients_resources.get_clients()
-	big_json = clients_resources.get_resources(clusters, clients, active_clusters)
-	resources = clients_resources.order_resources(big_json)
-	for res in resources.keys():
-		requests.post('http://127.0.0.1:5000/resource/{}', data=resources[res])
+	# test to see if db exists
+	try:
+		db.session.query(Resource).filter(Resource.rtype == "Application").all()
 
-	# get all edges (app and cluster) and update resource paths (breadcrumbs built while getting edges)
-	edges, cluster_paths, app_paths = clients_resources.order_edges_and_paths(big_json)
-	for edge in edges:
-		edge_dict = {'start_uid': edge[0], 'end_uid': edge[1], 'relation': edge[2]}
-		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(edge[0],edge[1]), data=edge_dict)
-	for res in cluster_paths.keys():
-		cpath_dict = {'cluster_path': cluster_paths[res]}
-		requests.put('http://127.0.0.1:5000/resource/{}'.format(res), data=cpath_dict)
-	for res in app_paths.keys():
-		apath_dict = {'app_path': app_paths[res]}
-		requests.put('http://127.0.0.1:5000/resource/{}'.format(res), data=apath_dict)
+	# if db doesn't exist, create and populate with cluster info
+	except sqlalchemy.exc.OperationalError as e:
 
-	# get the starting apps or clusters
-	if mode == 'app':
-		table = db.session.query(Resource).filter(Resource.rtype == "Application").all()
-	elif mode == 'cluster':
-		table = db.session.query(Resource).filter(Resource.rtype == "Cluster").all()
-	table_dicts = [row_to_dict(table_item) for table_item in table]
+		db.drop_all()
+		db.create_all()
 
-	return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+		# get all resources (app and cluster)
+		clusters, clients, active_clusters = clients_resources.get_clients()
+		big_json = clients_resources.get_resources(clusters, clients, active_clusters)
+		resources = clients_resources.order_resources(big_json)
+		for res in resources.keys():
+			requests.post('http://127.0.0.1:5000/resource/{}', data=resources[res])
+
+		# get all edges (app and cluster) and update resource paths (breadcrumbs built while getting edges)
+		edges, cluster_paths, app_paths = clients_resources.order_edges_and_paths(big_json)
+		for edge in edges:
+			edge_dict = {'start_uid': edge[0], 'end_uid': edge[1], 'relation': edge[2]}
+			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(edge[0],edge[1]), data=edge_dict)
+		for res in cluster_paths.keys():
+			cpath_dict = {'cluster_path': cluster_paths[res]}
+			requests.put('http://127.0.0.1:5000/resource/{}'.format(res), data=cpath_dict)
+		for res in app_paths.keys():
+			apath_dict = {'app_path': app_paths[res]}
+			requests.put('http://127.0.0.1:5000/resource/{}'.format(res), data=apath_dict)
+
+	# return the info needed on startup
+	finally:
+
+		# get the starting apps or clusters
+		if mode == 'app':
+			table = db.session.query(Resource).filter(Resource.rtype == "Application").all()
+		elif mode == 'cluster':
+			table = db.session.query(Resource).filter(Resource.rtype == "Cluster").all()
+		table_dicts = [row_to_dict(table_item) for table_item in table]
+
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+
 
 
 @app.route('/resource/<uid>', methods=['POST', 'PUT', 'GET', 'DELETE'])

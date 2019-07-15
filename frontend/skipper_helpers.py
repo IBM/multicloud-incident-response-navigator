@@ -4,9 +4,10 @@ Module with Skipper helper functions.
 
 import curses_helpers as chs
 from pyfiglet import Figlet
-from typing import List
+from typing import List, Callable
 import curses
 import time
+import requests
 
 
 def figlet_lines() -> List[str]:
@@ -16,13 +17,14 @@ def figlet_lines() -> List[str]:
 	return Figlet(font="standard").renderText("skipper").split("\n")[:-1]
 
 
-def loading_screen(stdscr) -> None:
+def loading_screen(stdscr, task: Callable) -> None:
 	"""
-	Draws the loading screen and keeps it for 0.5 secs.
+	Draws the loading screen, runs the task function, and returns the result.
 	"""
 
-	kube_config_line = ["Loading cluster info from kube-config..."]
-	chs.print_center(stdscr, figlet_lines() + kube_config_line)
-	time.sleep(0.5)
+	chs.print_center(stdscr, figlet_lines() + ["", "Loading clusters from kube-config..."])
+	cluster_names = requests.get('http://127.0.0.1:5000/cluster_names').json()["names"]
 	stdscr.erase()
-	stdscr.refresh()
+	message_lines = ["", "Loading info for the following clusters: " + ",".join(cluster_names) + ". This may take a while..."]
+	chs.print_center(stdscr, figlet_lines() + message_lines)
+	return task()
