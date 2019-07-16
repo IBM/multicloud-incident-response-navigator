@@ -1,4 +1,4 @@
-import k8s_config, sys
+import k8s_config, json
 from kubernetes import client, config
 from pprint import pprint
 import cluster_mode_backend as cm
@@ -20,7 +20,6 @@ def get_resources(clusters, clients, active_cluster):
 		jsons[cluster]["Job"] = clients[cluster]["batch_client"].list_job_for_all_namespaces().items
 		jsons[cluster]["Application"] = amb.cluster_applications(cluster)
 		jsons[cluster]["Deployable"] = amb.cluster_deployables(cluster)
-
 	return jsons
 
 def get_clients(): # returns clients (6 types) for each cluster, active cluster name, and jsons of resources
@@ -29,7 +28,6 @@ def get_clients(): # returns clients (6 types) for each cluster, active cluster 
 	active_cluster = active_context["context"]["cluster"]
 	api_client = config.new_client_from_config(context=active_context['name'])
 	clients = {}
-
 	for cluster in clusters:
 		context = clusters[cluster]
 	# building all clients all clusters
@@ -54,7 +52,8 @@ def order_resources(jsons):
 		# add namespace as resource
 		for ns in namespaces:
 			skipper_uid = cluster + "_" + ns
-			uids[skipper_uid] = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns, "cluster": cluster, "namespace": ns}
+			uids[skipper_uid] = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns, \
+			"cluster": cluster, "namespace": ns}
 		# add all other resources
 		for rtype in jsons[cluster]:
 			if rtype == 'ReplicaSet':
@@ -63,6 +62,8 @@ def order_resources(jsons):
 				if rtype not in ["Deployable", "Application"]:
 					resource = resource.to_dict()
 				# print(resource)
+				# if rtype == "Application":
+				# 	uids[skipper_uid]["deployables"] = resource["metadata"]["annotations"]["apps.ibm.com/deployables"]
 				uid = resource["metadata"]['uid']
 				skipper_uid = cluster+'_'+uid
 				name = resource["metadata"]["name"]
@@ -70,13 +71,18 @@ def order_resources(jsons):
 				created_at = resource["metadata"].get("creationTimestamp")
 				if not created_at:
 					created_at = resource["metadata"]["creation_timestamp"]
-				uids[skipper_uid] = { 'uid': skipper_uid, "created_at": created_at, "rtype": rtype, "name" : name, "cluster" : cluster, "namespace" : namespace, }
+				uids[skipper_uid] = { 'uid': skipper_uid, "created_at": created_at, \
+									  "rtype": rtype, "name" : name, \
+									  "cluster" : cluster, "namespace" : namespace, \
+									  }
+
 				# other info to include:
 				# application
 				# app_path
 				# cluster_path
 				# sev_measure
 				# info
+	print(len(uids))
 	return uids
 
 def get_resource(cluster, uid, jsons):
@@ -98,7 +104,6 @@ def order_edges_and_paths(jsons):
 		edges = edges.union(single_app.edges)
 		app_paths = {**app_paths, **single_app.paths}
 
-	# sys.exit()
 	initial_path = "/root/"
 	for cluster in clusters:
 		edges.add(('root', cluster, "Root<-Cluster"))
@@ -157,13 +162,12 @@ def order_edges_and_paths(jsons):
 					edges.add((svc_uid, pod_uid, "Service<-Pod"))
 
 			### end of cluster mode edges
-	# print(edges)
 	return edges, cluster_paths, app_paths
 
 
 if __name__ == "__main__":
 	clusters, clients, active_cluster= get_clients()
 	jsons = get_resources(clusters, clients, active_cluster)
-	order_edges_and_paths(jsons)
-	# order_resources(jsons)
+	# order_edges_and_paths(jsons)
+	order_resources(jsons)
 	# print(get_resource('iks-extremeblue', 'b4d69756-7bf0-11e9-9468-4687af9546f9', order_resources(jsons)))
