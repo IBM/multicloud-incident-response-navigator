@@ -2,7 +2,7 @@ from typing import List, Dict
 import json
 import kubernetes as k8s
 from kubernetes import client, config
-import k8s_api, k8s_config
+import k8s_api, k8s_config, cluster_mode_backend as cmb
 
 # Note: call k8s_config.update_available_clusters() before use!
 
@@ -13,7 +13,6 @@ APP_CRD_VERSION = "v1beta1"
 DPB_CRD_GROUP = "mcm.ibm.com"
 DPB_CRD_PLURAL = "deployables"
 DPB_CRD_VERSION = "v1alpha1"
-
 
 def cluster_applications(cluster_name: str) -> List[Dict]:
 	"""
@@ -35,7 +34,7 @@ def cluster_applications(cluster_name: str) -> List[Dict]:
 	
 	# insert cluster attribute into metadata
 	for app in apps:
-		app["metadata"]["cluster"] = cluster_name
+		app["metadata"]["cluster_name"] = cluster_name
 
 	return apps
 
@@ -75,8 +74,7 @@ def cluster_deployables(cluster_name: str) -> List[Dict]:
 
 	# add cluster name to metadata of Deployables
 	for result in results:
-		result["metadata"]["cluster"] = cluster_name
-
+		result["metadata"]["cluster_name"] = cluster_name
 	return results
 
 
@@ -136,7 +134,6 @@ def application_deployables(cluster_name: str, namespace: str, app_name: str) ->
 	app_dpbs = [ dpb for dpb in deployables if dpb["metadata"]["name"] in dpb_names ]
 	return app_dpbs
 
-
 def deployable_resource(cluster_name: str, namespace: str, deployable_name: str) -> Dict:
 	"""
 	Returns info on the resource that belongs to the Application.
@@ -144,7 +141,7 @@ def deployable_resource(cluster_name: str, namespace: str, deployable_name: str)
 	Arguments:	(str) cluster_name, name of cluster where Deployable resides
 				(str) namespace, namespace where Deployable resides
 				(str) deployable_name
-	Returns:	(Dict) dict with info about the Deployable's resource
+	Returns:	(Dict) dict with info about the Deployable's resource, or empty dict if deployer not accessible
 	"""
 		
 	# find the Deployable using the arguments given
@@ -165,16 +162,65 @@ def deployable_resource(cluster_name: str, namespace: str, deployable_name: str)
 	deployable = results[0]
 	kind = deployable["spec"]["deployer"]["kind"]
 
-	# case: resourse is helm chart
-	if kind == "helm":
-		helm_dict = deployable["spec"]["deployer"]["helm"]
-		helm_dict["metadata"] = { "cluster": cluster_name, "name": helm_dict["chartURL"] }
-		return helm_dict
+	if kind != 'helm':
+		deployer_name = deployable["spec"]["deployer"]["kube"]["template"]["metadata"]["name"]
+		deployer_namespace = deployable["spec"]["deployer"]["kube"]["namespace"]
+	else:
+		pass
+		# helm_dict = deployable["spec"]["deployer"]["helm"]
+		# helm_dict["metadata"] = { "cluster_name": "", "name": helm_dict["chartURL"] }
+		# helm_dict["kind"] = "HelmChart"
+		# return helm_dict
 
-	# case: resource is k8s resource
-	k8s_spec = deployable["spec"]["deployer"]["kube"]["template"]
-	k8s_spec["kind"] = kind
-	k8s_spec["namespace"] = deployable["spec"]["deployer"]["kube"]["namespace"]
-	k8s_spec["metadata"]["cluster"] = cluster_name
+	deployer_dict = {}
 
-	return k8s_spec
+	# go through given namespace in all clusters until we find a resource that has name = deployer_name
+	cluster_names = k8s_config.all_cluster_names()
+	for cluster_name in cluster_names:
+		candidates = []
+		if kind == 'Deployment':
+			candidates = cmb.namespace_deployments(deployer_namespace, cluster_name)
+		elif kind == 'Service':
+			candidates = cmb.namespace_services(deployer_namespace, cluster_name)
+		for res in candidates:
+			if res.metadata.name == deployer_name:
+				deployer_dict = res.to_dict()
+				deployer_dict["metadata"]["cluster_name"] = cluster_name
+				deployer_dict["kind"] = kind
+				break
+
+		# if already matched
+		if deployer_dict != {}:
+			break
+
+	return deployer_dict
+
+
+def deployable_resource_name(cluster_name: str, namespace: str, deployable_name: str) -> Dict:
+	"""
+	Same as first part of deployable_resource() above but only returns deployer name (or empty string)
+	"""
+
+	# find the Deployable using the arguments given
+	api_client = k8s_api.api_client(cluster_name, "CustomObjectsApi")
+	field_selector = "metadata.name=" + deployable_name
+	results = api_client.list_namespaced_custom_object(namespace=namespace,
+		group=DPB_CRD_GROUP,
+		version=DPB_CRD_VERSION,
+		plural=DPB_CRD_PLURAL,
+		field_selector=field_selector)["items"]
+
+	# if we couldn't find the Deployable, return None
+	if len(results) == 0:
+		print("No Deployable found with name", deployable_name, "in cluster", cluster_name, "and ns", namespace + ".")
+		return
+
+	# extract the managed resource from the Deployable dict
+	deployable = results[0]
+	kind = deployable["spec"]["deployer"]["kind"]
+
+	if kind != 'helm':
+		deployer_name = deployable["spec"]["deployer"]["kube"]["template"]["metadata"]["name"]
+		return deployer_name
+
+	return ""
