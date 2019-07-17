@@ -10,7 +10,7 @@ import sqlalchemy
 
 sys.path.insert(0,'../../backend')
 # sys.path.insert(0,'../crawler')
-import apps, clients_resources, k8s_config, cluster_mode_backend as cmb, app_mode_backend as amb
+import apps, clients_resources, k8s_config, cluster_mode_backend as cmb, app_mode_backend as amb, errors_backend
 
 def row_to_dict(row):
 	d = {}
@@ -219,8 +219,9 @@ def switch_app_mode(uid):
 		# get the resource that would correspond to a deployable (e.g. for pods, it's the pod's parent)
 		resource_to_match = None
 		if resource.rtype == 'Pod':
-			parent_uid = resource.cluster_path.split("/")[-2]
-			resource_to_match = db.session.query(Resource).filter_by(uid=parent_uid).first()
+			if resource.cluster_path != None:
+				parent_uid = resource.cluster_path.split("/")[-2]
+				resource_to_match = db.session.query(Resource).filter_by(uid=parent_uid).first()
 		elif resource.rtype in ['Deployment', 'Service', 'DaemonSet', 'StatefulSet']:
 			resource_to_match = resource
 
@@ -278,8 +279,9 @@ def switch_cluster_mode(uid):
 		# get the resource that you would find under a namespace (e.g. for pods, it's the pod's parent)
 		resource_to_match = None
 		if resource.rtype == 'Pod':
-			parent_uid = resource.app_path.split("/")[-2]
-			resource_to_match = db.session.query(Resource).filter_by(uid=parent_uid).first()
+			if resource.app_path != None:
+				parent_uid = resource.app_path.split("/")[-2]
+				resource_to_match = db.session.query(Resource).filter_by(uid=parent_uid).first()
 		elif resource.rtype in ['Deployment', 'Service', 'DaemonSet', 'StatefulSet']:
 			resource_to_match = resource
 
@@ -412,12 +414,14 @@ def get_table_by_resource(mode, uid):
 
 	return jsonify(path_names=path_names, path_rtypes=path_rtypes, path_uids=path_uids, table_items=[row_to_dict(t_item) for t_item in table_items], index=0)
 
-# @app.route('/errors')
-# def get_errors():
-# 	pods = errors_backend.get_unhealthy_pods()
-# 	resources = errors_backend.get_resources_with_bad_events()
-# 	all = pods + resources
-# 	return jsonify(resources=all)
+@app.route('/errors')
+def get_errors():
+	# each item in table_items list is (skipper_uid, type, name, status, reason)
+
+	pods = errors_backend.get_unhealthy_pods()
+	resources = errors_backend.get_resources_with_bad_events()
+	all = pods + resources
+	return jsonify(table_items=all)
 
 # @app.route('/viewqueue')
 # def view_queue():
