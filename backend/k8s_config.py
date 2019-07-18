@@ -31,7 +31,7 @@ def test_liveness(context_name: str) -> bool:
 	# check if list_namespace request throws a 404 unauthorized exception
 	try:
 		api_client.list_namespace()
-	except client.rest.ApiException as e:
+	except (client.rest.ApiException, urllib3.exceptions.MaxRetryError) as e:
 		return False
 
 	return True
@@ -51,7 +51,6 @@ def update_available_clusters() -> Dict:
 	for context in contexts:
 		context_name = context["name"]
 		cluster_name = context["context"]["cluster"]
-
 		# check to see if request times out (0.2 sec)
 		liveness_test = multiprocessing.Process(target=test_liveness, name="list namespaces", args=(context_name,))
 		liveness_test.start()
