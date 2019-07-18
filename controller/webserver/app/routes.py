@@ -24,12 +24,6 @@ def index():
 	return "Hello, World!"
 
 
-@app.route('/cluster_names')
-def get_cluster_names():
-	k8s_config.update_available_clusters()
-	cluster_names = k8s_config.all_cluster_names()
-	return jsonify(names=cluster_names)
-
 @app.route('/start/<mode>')
 def start(mode):
 	"""

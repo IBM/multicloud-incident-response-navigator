@@ -22,9 +22,6 @@ def loading_screen(stdscr, task: Callable) -> None:
 	Draws the loading screen, runs the task function, and returns the result.
 	"""
 
-	chs.print_center(stdscr, figlet_lines() + ["", "Loading clusters from kube-config..."])
-	cluster_names = requests.get('http://127.0.0.1:5000/cluster_names').json()["names"]
-	stdscr.erase()
-	message_lines = ["", "Loading info for the following clusters: " + ",".join(cluster_names) + ". This may take a while..."]
+	message_lines = ["", "Loading info from clusters found in kube-config..."]
 	chs.print_center(stdscr, figlet_lines() + message_lines)
 	return task()
