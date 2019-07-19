@@ -28,6 +28,7 @@ Module that represents the left panel of the Skipper interactive terminal tool.
 import sys, curses
 from typing import List
 import curses_helpers as chs
+import search_bar as sb
 
 this = sys.modules[__name__]	# used to reference module variables
 
@@ -42,6 +43,7 @@ table_uids = []			# uids for each resource in the table
 row_selector = 0		# which row of the table should be highlighted
 
 bc_height = 4			# height of the breadcrumbs window
+sb_height = 3			# height of the search bar window
 th_height = 3			# height of the table headers window
 tr_height = 3			# height of a table row window
 table_height = 0		# height of the table window
@@ -51,11 +53,13 @@ width,height = 0,0		# width and height of left_window
 end_x,end_y = 0,0		# absolute x,y of lower-right corner of left_window
 
 bcx, bcy = 0,0			# relative x,y of upper-left corner of breadcrumbs window
+sbx, sby = 0,0			# relative x,y of upper-left corner of search bar window
 thx, thy = 0,0			# relative x,y of upper-left corner of table headers window
 table_x, table_y = 0,0	# absolute x,y of upper-left corner of table window (curses.pad)
 
 window = None			# _curses.window object that represents the left window
 bc_window = None		# _curses.window object that represents the breadcrumbs window
+sb_window = None		# _curses.window object that represents the search bar window
 th_window = None		# _curses.window object that represents that table headers window
 table_window = None		# _curses.pad object that represents that table window
 
@@ -141,6 +145,10 @@ def set_contents(mode: str,
 		this.thx, this.thy = 0,this.bc_height	# relative x,y inside left_window
 		this.table_x, this.table_y = 0, y + this.bc_height + this.th_height # absolute x,y
 		this.table_height = this.height - this.bc_height - this.th_height
+	elif mode == "query":
+		this.thx, this.thy = 0, this.sb_height	# relative x,y inside left_window
+		this.table_x, this.table_y = 0, y + this.sb_height + this.th_height	# absolute x,y
+		this.table_height = this.height - this.sb_height - this.th_height
 	else:
 		this.thx, this.thy = 0,0	# relative x,y inside left_window
 		this.table_x, this.table_y = 0, y + this.th_height # absolute x,y
@@ -267,6 +275,12 @@ def draw() -> None:
 		this.table_start_y -= this.tr_height
 	
 	table_window.refresh(this.table_start_y,0, this.table_y,this.table_x, this.end_y,this.end_x)
+
+	# draw search bar last so cursor stays in the bar
+	if this.mode == "query":
+		this.sb_window = window.derwin(this.sb_height,this.width, this.sby,this.sbx)	# nlines, ncols, rel_y, rel_x
+		sb.set_window(this.sb_window)
+		sb.draw()
 
 
 def move_up():

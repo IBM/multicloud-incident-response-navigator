@@ -3,6 +3,7 @@ import skipper_helpers as shs
 import curses_helpers as chs
 import left_window as lwin
 import top_window as twin
+import search_bar as sb
 import right_window as rwin
 import requests
 
@@ -34,6 +35,43 @@ def update(mode, table_data, data, twin, lwin, rwin, rpane, panel_height, panel_
 	lwin.draw()
 	rwin.draw_summary(rpane, panel_height, panel_width, resource_by_uid[current_uid])
 	return table_data, resource_by_uid, current_uid
+
+def capture_query(stdscr) -> None:
+	"""
+	Captures input from the user and updates the search bar accordingly.
+
+	User must press [esc] to escape from this function.
+	Arguments: 	(_curses.window) stdscr
+	Returns:	None
+	"""
+	curses.curs_set(1)	# show the cursor
+
+	# returns whether a char is alphanumeric or not
+	alpha_num = lambda x: 64 < c < 91 or 96 < c < 123 or 47 < c < 58
+
+	c = stdscr.getch()
+	while True:
+		if c == 27:		# esc
+			break
+		elif c == 127:	# backspace
+			sb.backspace()
+		elif c == 260:	# left arrow
+			sb.move_left()
+		elif c == 261:
+			sb.move_right()
+		elif c == 1:	# ctrl-a
+			sb.move_to_start()
+		elif c == 5:
+			sb.move_to_end()
+		elif c == 10:	# enter
+			pass 		# TODO: make a controller request
+		elif alpha_num(c) or c in (32, 40, 41, 45, 46, 58): # space ( ) - . : 
+			sb.addch(chr(c))
+
+		c = stdscr.getch()
+
+	curses.curs_set(0)	# hide the cursor
+
 
 def run_skipper(stdscr):
 	"""
@@ -117,9 +155,12 @@ def run_skipper(stdscr):
 			mode = "query"
 			twin.draw(mode=mode)
 			table_data["mode"] = mode
+
+			# draw right before left so that cursor shows up in search bar
+			rwin.draw_summary(rpane, panel_height, panel_width, resource_by_uid[current_uid])
 			lwin.set_contents(*table_data.values())
 			lwin.draw()
-			rwin.draw_summary(rpane, panel_height, panel_width, resource_by_uid[current_uid])
+			capture_query(stdscr)
 		elif c == curses.KEY_UP:
 			current_uid = lwin.move_up()
 			rwin.draw_summary(rpane, panel_height, panel_width, resource_by_uid[current_uid])
