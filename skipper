@@ -1,23 +1,42 @@
 #!/bin/bash
 
+echo -ne "Starting Skipper..."
+
+# create the logs directory, if needed
+mkdir -p logs
+
+# kill webserver child process when this process exits
+trap 'kill $(jobs -p)' EXIT
+
 # enter into virtualenv
 source venv/bin/activate
 
 # start webserver in background
+echo -ne "\rStarting flask webserver..."
 cd ./controller/webserver
-flask run > flask.log 2>&1 &
-FLASK_PID=$!
+flask run >> ../../logs/flask.log 2>&1 &
 
 # wait until webserver is ready
-while ! curl http://127.0.0.1:5000 -m1 -o/dev/null -s ; do
-  sleep 1
-  echo "Waiting for flask webserver to start..."
-done
+echo -ne "\r"
+cd ../../
+python3 run/wait.py
+
+# exit if user keyboard interrupted
+if [ $? -eq 1 ]
+then
+	exit 1
+fi
+
+# exit if webserver failed to start properly
+echo -ne "\r"
+python3 run/check_status.py
+
+# exit if the webserver encountered an exception
+if [ $? -ne 0 ]
+then
+	exit 1
+fi
 
 # run skipper frontend
-cd ../../frontend
-python3 skipper.py
-
-# when user exits skipper
-deactivate
-kill $FLASK_PID
+cd frontend
+python3 skipper.py 2>> ../logs/skipper.log

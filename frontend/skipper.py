@@ -5,7 +5,7 @@ import left_window as lwin
 import top_window as twin
 import search_bar as sb
 import right_window as rwin
-import requests
+import sys, requests
 
 def update(mode, table_data, data, twin, lwin, rwin, rpane, panel_height, panel_width):
 	table_data["mode"] = mode
@@ -196,6 +196,9 @@ def run_skipper(stdscr):
 
 def main():
 	curses.wrapper(run_skipper)
-
+	
 if __name__ == "__main__":
-	main()
+	try:
+		main()
+	except KeyboardInterrupt:
+		sys.exit(0)

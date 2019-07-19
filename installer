@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # create and activate virtualenv
-pip3 install virtualenv
+echo -e "Creating virtualenv and installing python package dependencies..."
+echo -e "=================================================================\n"
+pip3 install --user virtualenv
 virtualenv --python=python3 venv
 source venv/bin/activate
 
@@ -13,3 +15,5 @@ deactivate
 
 # give skipper executable +x permissions
 chmod +x ./skipper
+echo -e "\nInstallation complete!"
+echo -e "You should now be able to run Skipper with ./skipper\n"

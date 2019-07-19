@@ -8,9 +8,13 @@ import inspect
 from dateutil.parser import parse
 import sqlalchemy
 
+
 sys.path.insert(0,'../../backend')
-# sys.path.insert(0,'../crawler')
 import apps, clients_resources, k8s_config, cluster_mode_backend as cmb, app_mode_backend as amb, errors_backend
+
+# loads the user's kube-config
+# gets exception info if something went wrong in the process
+running, e = k8s_config.load_kube_config()
 
 def row_to_dict(row):
 	d = {}
@@ -23,6 +27,13 @@ def row_to_dict(row):
 def index():
 	return "Hello, World!"
 
+@app.route('/running')
+def status():
+	"""
+	Returns info regarding any exceptions encountered when loading the user's kube-config.
+	"""
+	exc_str = str(type(e)) + "\n" + str(e) 
+	return jsonify(running=running, exception=exc_str)
 
 @app.route('/start/<mode>')
 def start(mode):

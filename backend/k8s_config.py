@@ -1,14 +1,31 @@
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from kubernetes import client, config
 import multiprocessing, time
 from requests.packages import urllib3
+import google.auth
 
-# load kube-config when module is imported or run
-config.load_kube_config()
 # suppress warning when certificate-authority is not added to kubeconfig
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # cluster to context mapping
 cc_mapping = {}
+
+
+def load_kube_config() -> Tuple[bool, Exception]:
+	"""
+	Loads the user's kube-config, returns an exception if something went wrong.
+
+	Arguments:	None
+	Returns:	(bool, Exception) status of load operation and
+				accompanying exception, if one was thrown
+	"""
+
+	try:
+		config.load_kube_config()
+	except google.auth.exceptions.RefreshError as e:
+		return (False, e)
+	else:
+		return (True, "")
 
 
 def test_liveness(context_name: str) -> bool:

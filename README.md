@@ -20,3 +20,6 @@ In the skipper/ directory, run
 ```
 ./skipper
 ```
+
+## Logs
+Logs are stored in the logs/ directory.
