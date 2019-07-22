@@ -11,8 +11,8 @@ def update(mode, table_data, data, twin, lwin, rwin, rpane, panel_height, panel_
 	table_data["mode"] = mode
 
 	if mode == 'app' or mode == 'cluster':
-		table_data["col_names"] = ["type", "name"]
-		table_data["col_widths"] = [20, 20]
+		table_data["col_names"] = ["kind", "name"]
+		table_data["col_widths"] = [20, 60]
 		table_data['row_selector'] = data['index']
 		table_data['path_names'] = data['path_names']
 		table_data['path_rtypes'] = data['path_rtypes']
@@ -22,8 +22,8 @@ def update(mode, table_data, data, twin, lwin, rwin, rpane, panel_height, panel_
 		resource_by_uid = {item['uid']: item for item in data['table_items']}
 	elif mode == 'anomaly':
 		# each item in data["table_items"] is (skipper_uid, type, name, reason, message)
-		table_data["col_names"] = ["type", "name", "reason"]
-		table_data["col_widths"] = [15, 60, 10]
+		table_data["col_names"] = ["kind", "name", "reason"]
+		table_data["col_widths"] = [15, 60, 20]
 		table_data['row_selector'] = 0
 		table_data['table'] = [[t_item[1], t_item[2], t_item[3]] for t_item in data['table_items']]
 		table_data["table_uids"] = [t_item[0] for t_item in data['table_items']]
@@ -112,7 +112,7 @@ def run_skipper(stdscr):
 
 	if len(data['table_items']) > 0:
 		table_data = {	"mode": START_MODE,
-						"col_names": ["type", "name"],
+						"col_names": ["kind", "name"],
 						"col_widths": [20,20],
 						"table": [[t_item['rtype'], t_item['name']] for t_item in data['table_items']],
 						"row_selector": data['index'],

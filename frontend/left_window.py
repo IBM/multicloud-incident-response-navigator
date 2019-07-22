@@ -163,23 +163,50 @@ def draw_bc_window(bc_window) -> None:
 					_curses.window object that represents the breadcrumb window
 	Returns:  	None
 	"""
+	# edge case: path and rtypes are of different lengths
+
+	# returns left and right padding needed to center str2 under str1
+	def padding(str1, str2):
+		if len(str2) >= len(str1):
+			return (0,0)
+		left_pad = (len(str1) - len(str2)) // 2
+		right_pad = len(str1)  - len(str2) - left_pad
+		return (left_pad, right_pad)
 
 	# edge case: name is shorter than resource type
-	# edge case: path is longer than bc window width
-	# edge case: path and rtypes are of different lengths
+	# solution: pad path names to always be longer than their corresponding type
+	padded_path_names = []
+	for name,rtype in zip(this.path_names, this.path_rtypes):
+		if len(rtype) > len(name):
+			diff = len(rtype) - len(name) 
+			pad = diff // 2 + diff % 2
+			padded_path_names.append(pad * " " + name + pad * " ")
+		else:
+			padded_path_names.append(name)
 	
-	# calculate and apply padding for resource labels that go below path
-	padded_rtypes = []
-	for name, rtype in zip(path_names, path_rtypes):
-		nlen, rtlen = len(name), len(rtype)
-		left_padding = (nlen-rtlen) - (nlen-rtlen)//2
-		right_padding = (nlen-rtlen)//2 + 3
-		padded_str = left_padding * " " + rtype + right_padding * " "
-		padded_rtypes.append(padded_str)
+	# create full path string
+	path_str = "/ " + " / ".join(padded_path_names)
+	if len(padded_path_names) > 0:
+		path_str += " /"
 
-	# create strings to be displayed
-	path_str = "/ " + " / ".join(path_names)
-	type_str = 2 * " " + "".join(padded_rtypes)
+	# create full type string
+	type_str = "  "
+	for name,rtype in zip(padded_path_names, this.path_rtypes):
+		lpad, rpad = padding(name, rtype)
+		type_str += lpad * " " + rtype + rpad * " "
+		type_str += "   "
+
+	# edge case: path is longer than bc window width
+	# solution: front-truncate the strings, if necessary
+	height, width = bc_window.getmaxyx()
+	max_len = width - 2 * LEFT_PADDING
+	if len(path_str) > max_len:
+		chop_idx = -1 * max_len
+		if path_str[chop_idx:].count("/") > 1:
+			while path_str[chop_idx] != "/":
+				chop_idx += 1
+		path_str = "..." + path_str[chop_idx:]
+		type_str = "   " + type_str[chop_idx:]
 
 	bc_window.addstr(1, this.LEFT_PADDING, path_str)
 	bc_window.addstr(2, this.LEFT_PADDING, type_str)
@@ -202,15 +229,18 @@ def draw_tr_window(tr_window, row: List[str]) -> None:
 		print("Please check that you are passing in valid arguments to the draw_tr_window function.")
 		return
 
+	# pads and truncates the given string, as necessary, to fit col_width
+	def fmt_str(string, col_width):
+		if len(string) > col_width:
+			return string[:col_width - 4] + "... "
+		return string + " " * (col_width - len(string))
+
 	# generate a python format string based on col widths (this.col_widths)
-	format_strs = []
-	for i,width in enumerate(this.col_widths):
-		format_str = "{" + str(i) + ":<" + str(width) + "}"
-		format_strs.append(format_str)
-	str_format = "".join(format_strs)
+	row_str = ""
+	for entry, width in zip(row, this.col_widths):
+		row_str += fmt_str(entry, width)
 
 	# draw the string inside the table row window
-	row_str = str_format.format(*row)
 	tr_window.addstr(1, this.LEFT_PADDING, row_str)
 
 
