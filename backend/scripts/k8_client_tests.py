@@ -32,7 +32,7 @@ api_ext = client.ApiextensionsV1beta1Api(api_client=api_client)
 events_client = client.EventsV1beta1Api	(api_client=api_client)
 
 # definitions = api_ext.list_custom_resource_definition(pretty=True)
-print(core_client.read_namespaced_pod("busybox", "default"))
+print(core_client.read_namespaced_pod("boisterous-shark-gbapp-frontend-8b5cc67bf-wctkb", "default"))
 
 # p = multiprocessing.Process(target=get_app, args=(customs_client,))
 # p.start()

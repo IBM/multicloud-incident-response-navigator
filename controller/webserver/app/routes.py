@@ -1,20 +1,21 @@
 from app import app, db
 from app.models import Resource, Edge
 from flask import request, jsonify, redirect, url_for
-import sys
-import requests
-import datetime
-import inspect
+import sys, requests, datetime, inspect, json
 from dateutil.parser import parse
 import sqlalchemy
 
 
 sys.path.insert(0,'../../backend')
-import apps, clients_resources, k8s_config, cluster_mode_backend as cmb, app_mode_backend as amb, errors_backend
+# sys.path.insert(0,'../crawler')
+import resource_files, errors_backend
+import apps, clients_resources, k8s_config, cluster_mode_backend as cmb, app_mode_backend as amb
+
 
 # loads the user's kube-config
 # gets exception info if something went wrong in the process
 running, e = k8s_config.load_kube_config()
+info_handler = resource_files.ResourceFiles()
 
 def row_to_dict(row):
 	d = {}
@@ -32,7 +33,7 @@ def status():
 	"""
 	Returns info regarding any exceptions encountered when loading the user's kube-config.
 	"""
-	exc_str = str(type(e)) + "\n" + str(e) 
+	exc_str = str(type(e)) + "\n" + str(e)
 	return jsonify(running=running, exception=exc_str)
 
 @app.route('/start/<mode>')
@@ -66,9 +67,10 @@ def start(mode):
 		for ns in namespaces:
 			ns = ns.to_dict()
 			skipper_uid = cluster + "_" + ns["metadata"]["name"]
+			labels = ns["metadata"]["labels"] if ns["metadata"].get("labels") else "None"
 			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"],
 							 "cluster": cluster, "namespace": ns["metadata"]["name"],
-							 "cluster_path": "/root/{}/".format(cluster)}
+							 "cluster_path": "/root/{}/".format(cluster), "info" : json.dumps({ "labels" : labels, "status" : ns["status"]["phase"]} )}
 			requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 			edge_data = {'start_uid': cluster, 'end_uid': skipper_uid, 'relation': "Cluster<-Namespace"}
 			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(cluster, skipper_uid), data=edge_data)
@@ -80,8 +82,12 @@ def start(mode):
 		app_name = app["metadata"]["name"]
 		app_uid = app_cluster + "_" + app["metadata"]["uid"]
 		app_ns = app["metadata"]["namespace"]
+		labels = app["metadata"]["labels"] if app["metadata"].get("labels") else "None"
+		info = { "labels" : labels, "status" : app["status"], \
+				 "deployables" : app["metadata"]["annotations"]['apps.ibm.com/deployables']}
+
 		data = {'uid': app_uid, "created_at": app["metadata"].get("creationTimestamp"), "rtype": "Application",
-				"name": app_name, "cluster": app_cluster, "namespace": app_ns, "app_path": "/root/"}
+				"name": app_name, "cluster": app_cluster, "namespace": app_ns, "app_path": "/root/", "info" : json.dumps(info)}
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(app_uid), data=data)
 		edge_data = {'start_uid': 'root', 'end_uid': app_uid, 'relation': "Root<-Application"}
 		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format('root', app_uid), data=edge_data)
@@ -93,11 +99,13 @@ def start(mode):
 			namespace = dpb["metadata"]["namespace"]
 			dpb_uid = cluster + "_" + dpb["metadata"]["uid"]
 			created_at = dpb["metadata"].get("creationTimestamp")
+			labels = dpb["metadata"]["labels"] if dpb["metadata"].get("labels") else "None"
+			info = { "labels" : labels, "status" : app["status"]}
 			if not created_at:
 				created_at = dpb["metadata"]["creation_timestamp"]
 			resource_data = {'uid': dpb_uid, "created_at": created_at, "rtype": "Deployable",
 							 "name": dpb["metadata"]["name"], "cluster": cluster, "namespace": namespace,
-							 "app_path": "/root/{}/".format(app_uid)}
+							 "app_path": "/root/{}/".format(app_uid), "info" : json.dumps(info)}
 			requests.post('http://127.0.0.1:5000/resource/{}'.format(dpb_uid), data=resource_data)
 			edge_data = {'start_uid': app_uid, 'end_uid': dpb_uid, 'relation': "Application<-Deployable"}
 			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(app_uid, dpb_uid), data=edge_data)
@@ -167,22 +175,24 @@ def resource(uid):
 		if request.method == 'PUT': # update db
 			db.session.query(Resource).filter(Resource.uid == uid).update(data)
 			db.session.commit()
-			return "Resource updated"
 
-# # TODO unfinished
-# @app.route('/resource/<uid>/<info_type>')
-# def get_resource_info(uid, info_type):
-# 	resource = db.session.query(Resource).filter(Resource.uid == uid).first()
-# 	info_handler = resource_files.resource_files()
-# 	if info_type == 'yaml':
-# 		info = info_handler.getYaml(resource.type, resource.name, resource.cluster)
-# 	elif info_type == 'describe':
-# 		### TODO this is not going to work for all resources
-# 		info = info_handler.getDescribe(resource.type, resource.name, resource.namespace, resource.cluster)
-# 	elif info_type == 'events':
-# 		info = info_handler.getEvents()
-# 	elif info_type == 'logs':
-# 		info = info_handler.getLogs()
+@app.route('/resource/<uid>/<info_type>')
+def get_resource_info(uid, info_type):
+	resource = db.session.query(Resource).filter(Resource.uid == uid).first()
+	uid = uid.split("_")[-1]
+
+	if info_type == 'yaml':
+		if resource == None:
+			return jsonify(yaml="Yaml not found")
+		return jsonify(yaml=info_handler.get_yaml(resource.rtype, resource.name, resource.namespace, resource.cluster))
+	elif info_type == 'events':
+		if resource == None:
+			return jsonify(yaml="Events not found")
+		return jsonify(events=info_handler.get_events(resource.cluster, resource.namespace, uid))
+	elif info_type == 'logs':
+		if resource == None:
+			return jsonify(logs="Logs not found")
+		return jsonify(logs=info_handler.get_logs(resource.cluster, resource.namespace, resource.name))
 
 
 @app.route('/edge/<start_uid>/<end_uid>', methods=['POST', 'PUT'])
@@ -326,14 +336,14 @@ def switch_cluster_mode(uid):
 def get_table_by_resource(mode, uid):
 	"""
 	Get the table and relevant info for navigating INTO a resource (aka the table lists children)
-    :param mode: 'app' or 'cluster'
-    :param uid: skipper uid of resource
-    :return: json response including path (List[str], list of names of resources in the path),
-    								rtypes (List[str], list of rtypes of resources in the path),
+	:param mode: 'app' or 'cluster'
+	:param uid: skipper uid of resource
+	:return: json response including path (List[str], list of names of resources in the path),
+									rtypes (List[str], list of rtypes of resources in the path),
 									index (int, row to be selected),
 									table (List[Dict], list of dictionaries for resources to be displayed),
 									current_resource (Resource)
-    """
+	"""
 
 	# TODO needs to be broken up into smaller functions
 
@@ -347,7 +357,10 @@ def get_table_by_resource(mode, uid):
 		for ns in namespaces:
 			ns = ns.to_dict()
 			skipper_uid = resource.cluster + "_" + ns["metadata"]["name"]
-			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"], "cluster": resource.cluster, "namespace": ns["metadata"]["name"], "cluster_path": resource.cluster_path + resource.uid + "/"}
+			info = { "k8s_uid" : ns["metadata"]["uid"]}
+			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"], \
+							"cluster": resource.cluster, "namespace": ns["metadata"]["name"], \
+							"cluster_path": resource.cluster_path + resource.uid + "/", "info": json.dumps(info)}
 			requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 			edge_data = {'start_uid': resource.uid, 'end_uid': skipper_uid, 'relation': "Cluster<-Namespace"}
 			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(resource.uid, skipper_uid), data=edge_data)
@@ -385,9 +398,65 @@ def get_table_by_resource(mode, uid):
 		created_at = child_obj["metadata"].get("creationTimestamp")
 		if not created_at:
 			created_at = child_obj["metadata"]["creation_timestamp"]
+		labels = child_obj["metadata"]["labels"] if child_obj.get("labels") is not None else "None"
+		spec = child_obj.get("spec")
+		status = child_obj.get("status")
+		if spec is not None:
+			ports =  spec.get("ports")
+			selector = spec.get("selector")
+		else:
+			ports, selector = "None", "None"
+		if status is not None:
+			host_ip = status.get("host_ip")
+			phase = status.get("phase")
+			pod_ip = status.get("pod_ip")
+			container_statuses = status.get("container_statuses")
+			if container_statuses is not None:
+				ready, restarts = 0, 0
+				container_count = len(container_statuses)
+				for c in container_statuses:
+					ready += c["ready"]
+					restarts += c["restart_count"]
+				ready = str(ready) + "/" + str(container_count)
+			else:
+				ready, restarts, container_count  = "None", "None", "None"
+
+			# available, up-to-date, and ready replicas for both deployments and daemonsets
+			if status.get("available_replicas"):
+				available = status["available_replicas"]
+			else:
+				available = status["number_available"] if status.get("number_available") else "0"
+
+			if status.get("updated_replicas"):
+				updated = status["updated_replicas"]
+			else:
+				updated = status["updated_number_scheduled"] if status.get("updated_number_scheduled") else "0"
+
+			if status.get("ready_replicas"):
+				ready_replicas = status["ready_replicas"]
+			else:
+				ready_replicas = status["number_ready"] if status.get("number_ready") else "0"
+
+
+			if status.get("replicas"):
+				replicas = status["replicas"]
+			else:
+				replicas = status["current_number_scheduled"] if status.get("current_number_scheduled") else "0"
+
+			ready_reps = str(ready_replicas) + "/" + str(replicas)
+
+		else:
+			host_ip, phase, pod_ip, ready, restarts, container_count  = None, None, None, "None", "None", 0
+
+		owner_refs = child_obj["metadata"]["owner_references"] if child_obj["metadata"].get("owner_references") else "None"
+		info = {"labels" : labels, "ports" : ports, "selector" : selector, \
+				"owner_refs" : owner_refs, "host_ip" : host_ip, "phase" : phase, "pod_ip" : pod_ip, "ready" : ready, "restarts" : str(restarts),\
+				"available" : str(available), "updated" : str(updated), "ready_reps" : str(ready_reps)}
 
 		# build dict
-		resource_data = {'uid': skipper_uid, "created_at": created_at, "rtype": rtype, "name" : child_obj["metadata"]["name"], "cluster" : cluster, "namespace" : namespace}
+		resource_data = {'uid': skipper_uid, "created_at": created_at, \
+						 "rtype": rtype, "name" : child_obj["metadata"]["name"], \
+						 "cluster" : cluster, "namespace" : namespace, "info": json.dumps(info)}
 
 		# update paths
 		if resource.app_path != None:
