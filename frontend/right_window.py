@@ -235,9 +235,9 @@ def draw_work(win, left, right, length, width, resource_data):
 		info = json.loads(resource_data["info"])
 		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
 		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
-		available = info["available"]
-		updated = info["updated" ]
-		ready_reps = info["ready_reps"]
+		available = info["available"] if info.get("available") and (info.get("available") != "None") else "0"
+		updated = info["updated" ] if info.get("updated") and (info.get("updated") != "None") else "0"
+		ready_reps = info["ready_reps"] if info.get("ready_reps") and (info.get("ready_reps") != "None") else "0"
 	else:
 		labels, status, available, updated, ready_reps = "None", "None", "None", "None", "None"
 
@@ -268,7 +268,7 @@ def draw_ns(win, left, right, length, width, resource_data):
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
 		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
-		k8s_uid = info["k8s_uid"] if info.get("k8s_uid") and (info.get("k8s_uid") != "None") else None
+		k8s_uid = info["k8s_uid"] if info.get("k8s_uid") and (info.get("k8s_uid") != "None") else "None"
 	else:
 		status = None
 

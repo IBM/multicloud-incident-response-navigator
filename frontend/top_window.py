@@ -41,11 +41,12 @@ def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
 	this.window = curses.newwin(height,width, y,x)
 
 
-def draw(mode: str) -> None:
+def draw(mode: str, ftype : str) -> None:
 	"""
 	Draws the top banner based on the given mode.
 
 	Arguments:	(str) mode
+				(str) resource file type for right window
 	Returns:	None
 	"""
 
@@ -54,18 +55,18 @@ def draw(mode: str) -> None:
 	nav_keybinds = ['[esc] command mode',
 					'[shift-l] left pane',
 					'[shift-r] right pane',
-					'[shift-b] back',
 					'[q] quit']
-	mode_keybinds = ['[1] cluster mode',
-					'[2] app mode',
-					'[3] anomaly mode',
-					'[4] query mode']
-	resource_keybinds = ['[shift-s] summary',
-					'[shift-d] describe',
-					'[shift-y] yaml',
-					'[shift-l] logs',
-					'[shift-e] k8s events']
-
+	mode_keybinds = {'cluster' : '[1] cluster mode',
+					'app' : '[2] app mode',
+					'anomaly' : '[3] anomaly mode',
+					'query' : '[4] query mode'
+					}
+	resource_keybinds = {'summary' : '[s] summary',
+					'yaml' : '[y] yaml',
+					'logs' : '[l] logs',
+					'events' : '[e] k8s events'
+						}
+						
 	skipper_figlet_lines = shs.figlet_lines()
 
 	# draw figlet
@@ -94,23 +95,33 @@ def draw(mode: str) -> None:
 		y += 1
 
 	# draw mode keybinds
+	# if mode drawn matches current mode, highlight it (currently bolds)
 	y = keybinds_y
 	x += max(len(kb) for kb in nav_keybinds) + this.LEFT_PADDING
-	for kb in mode_keybinds:
-		this.window.addstr(y, x, kb)	# y, x, str
+	for kb in mode_keybinds.values():
+		if mode_keybinds[mode] == kb:
+			this.window.addstr(y, x, kb, curses.A_STANDOUT)	# y, x, str
+			if mode == "query":
+				y += 1
+				this.window.addstr(y, x, "[esc] to exit search") # message about how to get out of query mode
+		else:
+			this.window.addstr(y, x, kb)	# y, x, str
 		y += 1
 
 	# calculate starting position for resource keybinds
 	# draw the phrase "resource key binds"
 	y = keybinds_y
-	x += max(len(kb) for kb in mode_keybinds) + 2 * this.LEFT_PADDING
+	x += max(len(kb) for kb in mode_keybinds.values()) + 2 * this.LEFT_PADDING
 	this.window.addstr(y, x, "resource key binds")
 
 	# draw resource keybinds
 	y = keybinds_y
 	x += len("resource key binds") + this.LEFT_PADDING
-	for kb in resource_keybinds:
-		this.window.addstr(y, x, kb)	# y, x, str
+	for kb in resource_keybinds.values():
+		if resource_keybinds[ftype] == kb:
+			this.window.addstr(y, x, kb, curses.A_STANDOUT)	# y, x, str
+		else:
+			this.window.addstr(y, x, kb)	# y, x, str
 		y += 1
 
 	this.window.refresh()

@@ -153,7 +153,9 @@ def run_skipper(stdscr):
 	# initialize and draw top window
 	height, width = stdscr.getmaxyx()
 	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0)	# height, width, y, x
-	twin.draw(mode=START_MODE)
+	mode = START_MODE
+	ftype = START_FTYPE
+	twin.draw(mode=mode, ftype=ftype)
 
 	top_height, top_width = twin.window.getmaxyx()
 
@@ -222,7 +224,7 @@ def run_skipper(stdscr):
 				table_data, resource_by_uid, current_uid = update("anomaly", table_data, data, twin, lwin, rwin, rpane, panel_height, panel_width, top_height, ftype)
 		elif c == ord('4'):		# query mode
 			mode = "query"
-			twin.draw(mode=mode)
+			twin.draw(mode=mode, ftype=ftype)
 			table_data["mode"] = mode
 
 			# if we are coming from a different mode, restore previous search results
@@ -251,6 +253,7 @@ def run_skipper(stdscr):
 		elif c == ord('y'):
 			ftype = "yaml"
 			rwin.draw(ftype, rpane, panel_height, panel_width, top_height, resource_by_uid[current_uid])
+			twin.draw(mode=mode, ftype=ftype)
 			# rpane = curses.newpad(panel_height, panel_width)
 			# rpane.refresh(0, 0, top_height, panel_width, height, top_width)
 			# display y, display x, starty on stdscreen , startx on stdscreen (where start is top left),
@@ -258,15 +261,15 @@ def run_skipper(stdscr):
 		elif c == ord('l'):
 			ftype = "logs"
 			rwin.draw(ftype, rpane, panel_height, panel_width, top_height, resource_by_uid[current_uid])
-
+			twin.draw(mode=mode, ftype=ftype)
 		elif c == ord('s'):
 			ftype = "summary"
 			rwin.draw(ftype, rpane, panel_height, panel_width, top_height, resource_by_uid[current_uid])
-
+			twin.draw(mode=mode, ftype=ftype)
 		elif c == ord('e'):
 			ftype = "events"
 			rwin.draw(ftype, rpane, panel_height, panel_width, top_height, resource_by_uid[current_uid])
-
+			twin.draw(mode=mode, ftype=ftype)
 		elif c == curses.KEY_UP:
 			current_uid = lwin.move_up()
 			rwin.draw(ftype, rpane, panel_height, panel_width, top_height, resource_by_uid[current_uid])
@@ -322,7 +325,7 @@ def update(mode, table_data, data, twin, lwin, rwin, rpane, panel_height, panel_
 		resource_by_uid = {item[0]: requests.get('http://127.0.0.1:5000/resource/{}'.format(item[0])).json()['data'] for item in data['table_items']}
 
 	current_uid = table_data['table_uids'][table_data['row_selector']]
-	twin.draw(mode=mode)
+	twin.draw(mode=mode, ftype=ftype)
 	lwin.set_contents(*table_data.values())
 	lwin.draw()
 	rwin.draw(ftype, rpane, panel_height, panel_width, top_height, resource_by_uid[current_uid])
