@@ -129,21 +129,20 @@ def get_resources_with_bad_events():
                                                              'Starting',
                                                              'VolumeResizeSuccessful','SuccessfulAttachVolume','SuccessfulMountVolume',
                                                              'Rebooted',
-                                                             'Scheduled',
-                                                             'SuccessfulCreate'
+                                                             'Scheduled', 'Schedule',
+                                                             'ScalingReplicaSet',
+                                                             'SuccessfulCreate',
                                                              'SandboxChanged']:
 
                     message = ev.message if ev.message != None else ''
 
                     if ev.reason != None:
-                        obj = ev.metadata
-                        skipper_uid = cluster+"_"+obj.uid
-                        bad_resources.append((skipper_uid,ev.involved_object.kind,obj.name, ev.reason, message))
-                        
-                        created_at = obj.creation_timestamp
+                        skipper_uid = cluster + "_" + ev.involved_object.uid
+                        bad_resources.append((skipper_uid,ev.involved_object.kind,ev.involved_object.name, ev.reason, message))
+
                         # write resources to db
-                        resource_data = {'uid': skipper_uid, "created_at": created_at, "rtype": ev.involved_object.kind,
-                                         "name": obj.name, "cluster": cluster, "namespace": ns}
+                        resource_data = {'uid': skipper_uid, "rtype": ev.involved_object.kind,
+                                         "name": ev.involved_object.name, "cluster": cluster, "namespace": ns}
                         requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 
     return bad_resources

@@ -492,10 +492,9 @@ def get_table_by_resource(mode, uid):
 def get_errors():
 	# each item in table_items list is (skipper_uid, type, name, status, reason)
 
-	pods = errors_backend.get_unhealthy_pods()
+	# pods = errors_backend.get_unhealthy_pods()
 	resources = errors_backend.get_resources_with_bad_events()
-	all = pods + resources
-	return jsonify(table_items=all)
+	return jsonify(table_items=resources)
 
 # @app.route('/viewqueue')
 # def view_queue():
