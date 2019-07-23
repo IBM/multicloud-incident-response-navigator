@@ -39,6 +39,12 @@ def draw() -> None:
 	this.window.refresh()
 
 
+def get_query() -> str:
+	"""
+	Returns the current query.
+	"""
+	return "".join(this.query_chars)
+
 def addch(char: chr) -> None:
 	"""
 	Writes the given char at the current cursor position.
@@ -114,4 +120,12 @@ def move_to_end() -> None:
 	Moves the cursor to the end of the query.
 	"""
 	this.window.move(1, LEFT_PADDING + len(this.query_chars))
+	this.window.refresh()
+
+def show_cursor() -> None:
+	"""
+	Displays cursor where it previously was in search bar window.
+	"""
+	y,x = this.window.getyx()
+	this.window.move(y, x)
 	this.window.refresh()

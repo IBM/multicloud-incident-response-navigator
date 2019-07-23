@@ -124,7 +124,12 @@ def draw_summary(win, length, width, top_height, resource_data):
 	:return:
 	"""
 	win.erase()
-	win.border(curses.ACS_VLINE, " ", " ", " ", " ", " ", " ", " ")
+	win.border(curses.ACS_VLINE, " ", " ", " ", " ", " ", " ", " ")	# left border
+
+	if resource_data == None:
+		win.refresh()
+		return
+
 	rtype, rname = resource_data['rtype'], resource_data['name']
 	resource_data["status"] = status
 

@@ -225,6 +225,13 @@ def switch_app_mode(uid):
 									table (List[Dict], list of dictionaries for resources to be displayed),
 									current_resource (Resource)
 	"""
+
+	# if we're switching from nothing, go to top of the Application hierarchy
+	if uid == "empty":
+		table = db.session.query(Resource).filter(Resource.rtype == 'Application').all()
+		table_dicts = [row_to_dict(table_item) for table_item in table]
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+
 	resource = db.session.query(Resource).filter_by(uid=uid).first()
 
 	full_path = resource.app_path
@@ -285,8 +292,14 @@ def switch_cluster_mode(uid):
 									current_resource (Resource)
 	"""
 
-	resource = db.session.query(Resource).filter_by(uid=uid).first()
+	# if we're switching from nothing, go to top of the Application hierarchy
+	if uid == "empty":
+		table = db.session.query(Resource).filter(Resource.rtype == 'Cluster').all()
+		table_dicts = [row_to_dict(table_item) for table_item in table]
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
 
+	resource = db.session.query(Resource).filter_by(uid=uid).first()
+	
 	full_path = resource.cluster_path
 
 	if full_path == None: # either doesn't exist in cluster mode or hasn't been lazy-loaded yet
@@ -510,6 +523,21 @@ def view_resources():
 def view_edges():
 	result = Edge.query.all()
 	return jsonify(edges=[row_to_dict(res) for res in result])
+
+@app.route('/search/<query>')
+def search(query: str):
+	"""
+	Searches over all resource names and returns the results as json.
+	"""
+	results = db.session.query(Resource).filter(Resource.name.ilike("%" + query + "%"))
+	return jsonify(results=[ row_to_dict(r) for r in results ])
+
+@app.route('/search/')
+def empty_search():
+	"""
+	Returns an empty search result.
+	"""
+	return jsonify(results=[])
 
 # @app.route('/redirectme')
 # def redirectme():

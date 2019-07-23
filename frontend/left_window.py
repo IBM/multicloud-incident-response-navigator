@@ -266,7 +266,9 @@ def draw_table_window(table_window) -> None:
 		draw_tr_window(rowwin, entries)
 
 	# Highlight the row at index this.row_selector
-	chs.highlight_window(row_windows[this.row_selector][1])
+	# if there are any rows
+	if len(table) > 0:
+		chs.highlight_window(row_windows[this.row_selector][1])
 
 
 def draw() -> None:
@@ -316,6 +318,9 @@ def draw() -> None:
 def move_up():
 	# decrements this.row_selector and redraws window, if necessary
 	# returns updated row_selector
+	if len(this.table) == 0:
+		return "empty"
+
 	if this.row_selector > 0:
 		this.row_selector -= 1
 		this.draw()
@@ -325,6 +330,9 @@ def move_up():
 def move_down():
 	# increments this.row_selector and redraws window, if necessary
 	# returns updated row_selector
+	if len(this.table) == 0:
+		return "empty"
+		
 	if this.row_selector < len(table)-1:
 		this.row_selector += 1
 		this.draw()
