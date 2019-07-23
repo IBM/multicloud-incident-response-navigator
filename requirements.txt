@@ -10,3 +10,5 @@ kubernetes==10.0.0
 PyYAML==5.1.1
 pytz==2019.1
 tabulate==0.8.3
+si-prefix==1.2.2
+hurry.filesize==0.9

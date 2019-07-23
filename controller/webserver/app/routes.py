@@ -8,7 +8,7 @@ import sqlalchemy
 
 sys.path.insert(0,'../../backend')
 # sys.path.insert(0,'../crawler')
-import resource_files, errors_backend
+import resource_files, errors_backend, metrics
 import apps, clients_resources, k8s_config, cluster_mode_backend as cmb, app_mode_backend as amb
 
 
@@ -465,6 +465,11 @@ def get_table_by_resource(mode, uid):
 		info = {"labels" : labels, "ports" : ports, "selector" : selector, \
 				"owner_refs" : owner_refs, "host_ip" : host_ip, "phase" : phase, "pod_ip" : pod_ip, "ready" : ready, "restarts" : str(restarts),\
 				"available" : str(available), "updated" : str(updated), "ready_reps" : str(ready_reps)}
+
+		if rtype == 'Pod':
+			pod_metrics, container_metrics = metrics.aggregate_pod_metrics(cluster, namespace, child_obj["metadata"]["name"])
+			info['pod_metrics'] = pod_metrics
+			info['container_metrics'] = container_metrics
 
 		# build dict
 		resource_data = {'uid': skipper_uid, "created_at": created_at, \

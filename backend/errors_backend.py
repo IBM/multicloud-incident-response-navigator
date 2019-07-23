@@ -2,6 +2,8 @@ import cluster_mode_backend as cmb
 import k8s_config
 import k8s_api
 import requests
+import metrics
+import json
 
 # check what clusters we can access
 k8s_config.update_available_clusters()
@@ -99,10 +101,13 @@ def get_unhealthy_pods():
             skipper_uid = pod_cluster + "_" + pod.metadata.uid
             bad_pods.append((skipper_uid, 'Pod', pod.metadata.name, reason, message))
 
+            pod_metrics, container_metrics = metrics.aggregate_pod_metrics(pod_cluster, pod_ns, pod.metadata.name)
+            info = {'pod_metrics': pod_metrics, 'container_metrics': container_metrics}
+
             created_at = pod.metadata.creation_timestamp
             # write pods to db
             resource_data = {'uid': skipper_uid, "created_at": created_at, "rtype": 'Pod',
-                             "name": pod.metadata.name, "cluster": pod_cluster, "namespace": pod_ns}
+                             "name": pod.metadata.name, "cluster": pod_cluster, "namespace": pod_ns, "info": json.dumps(info)}
             requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 
     return bad_pods
@@ -140,9 +145,15 @@ def get_resources_with_bad_events():
                         skipper_uid = cluster + "_" + ev.involved_object.uid
                         bad_resources.append((skipper_uid,ev.involved_object.kind,ev.involved_object.name, ev.reason, message))
 
+                        info = {}
+                        if ev.involved_object.kind == 'Pod':
+                            pod_metrics, container_metrics = metrics.aggregate_pod_metrics(cluster, ns, ev.involved_object.name)
+                            info['pod_metrics'] = pod_metrics
+                            info['container_metrics'] = container_metrics
+
                         # write resources to db
                         resource_data = {'uid': skipper_uid, "rtype": ev.involved_object.kind,
-                                         "name": ev.involved_object.name, "cluster": cluster, "namespace": ns}
+                                         "name": ev.involved_object.name, "cluster": cluster, "namespace": ns, "info":json.dumps(info)}
                         requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 
     return bad_resources
