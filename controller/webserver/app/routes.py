@@ -299,7 +299,7 @@ def switch_cluster_mode(uid):
 		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
 
 	resource = db.session.query(Resource).filter_by(uid=uid).first()
-	
+
 	full_path = resource.cluster_path
 
 	if full_path == None: # either doesn't exist in cluster mode or hasn't been lazy-loaded yet
@@ -371,8 +371,11 @@ def get_table_by_resource(mode, uid):
 			ns = ns.to_dict()
 			skipper_uid = resource.cluster + "_" + ns["metadata"]["name"]
 			info = { "k8s_uid" : ns["metadata"]["uid"]}
+			created_at = ns["metadata"].get("creationTimestamp")
+			if not created_at:
+				created_at = ns["metadata"]["creation_timestamp"]
 			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"], \
-							"cluster": resource.cluster, "namespace": ns["metadata"]["name"], \
+							"cluster": resource.cluster, "namespace": ns["metadata"]["name"], "created_at" : created_at, \
 							"cluster_path": resource.cluster_path + resource.uid + "/", "info": json.dumps(info)}
 			requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 			edge_data = {'start_uid': resource.uid, 'end_uid': skipper_uid, 'relation': "Cluster<-Namespace"}
@@ -411,7 +414,7 @@ def get_table_by_resource(mode, uid):
 		created_at = child_obj["metadata"].get("creationTimestamp")
 		if not created_at:
 			created_at = child_obj["metadata"]["creation_timestamp"]
-		labels = child_obj["metadata"]["labels"] if child_obj.get("labels") is not None else "None"
+		labels = child_obj["metadata"]["labels"] if child_obj["metadata"].get("labels") else "None"
 		spec = child_obj.get("spec")
 		status = child_obj.get("status")
 		if spec is not None:

@@ -1,15 +1,28 @@
 import clients_resources as cr
 import yaml, datetime, pytz, kubernetes
+import app_mode_backend as amb
 
 class ResourceFiles:
 	def __init__(self):
 		self.clusters, self.clients, self.active_cluster= cr.get_clients()
+		apps = amb.all_applications()
+		self.apps = { app["metadata"]["name"] : app for app in apps}
+		self.dpbs = {}
+		for app in self.apps.values():
+			app_name = app["metadata"]["name"]
+			app_ns = app["metadata"]["namespace"]
+			app_cluster = app["metadata"]["cluster_name"]
+			deployables = amb.application_deployables(cluster_name=app_cluster, namespace=app_ns, app_name=app_name)
+			for dpb in deployables:
+				dpb_name = dpb["metadata"]["name"]
+				self.dpbs[dpb_name] = dpb
+
 
 	# both yaml and describe information lives in read, so it may make more sense ot output them as the same yaml file
 	def get_yaml(self, type, name, namespace, cluster):
 		if type in ["DaemonSet", "Deployment", "ReplicaSet", "StatefulSet"]:
 			client = self.clients[cluster]["apps_client"]
-		elif type in ["Pod", "Service", "Event"]:
+		elif type in ["Pod", "Service", "Event", "Namespace"]:
 			client = self.clients[cluster]["core_client"]
 
 		if type == "DaemonSet":
@@ -24,7 +37,13 @@ class ResourceFiles:
 			doc = client.read_namespaced_service(name, namespace).to_dict()
 		elif type == "Pod":
 			doc =  client.read_namespaced_pod(name, namespace).to_dict()
-
+		elif type == "Application":
+			doc = self.apps[name]
+		elif type == "Deployable":
+			doc = self.dpbs[name]
+		elif type == "Namespace":
+			doc = client.read_namespace(name).to_dict()
+			
 		return yaml.dump(doc, sort_keys=False)
 
 	def parse_time(self, time):

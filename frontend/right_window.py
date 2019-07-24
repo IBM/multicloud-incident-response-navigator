@@ -49,7 +49,7 @@ def draw_yaml(resource_data):
 	:return:
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
-	if resource_data["rtype"] not in ["Namespace", "Cluster", "Application", "Deployable"]:
+	if resource_data["rtype"] not in ["Cluster"]:
 		yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
 		y = 3
 		for i in range (min(panel_height-3, len(yaml))):
@@ -226,7 +226,7 @@ def draw_ns(resource_data):
 		status = None
 
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + k8s_uid]
-	rfields = ["Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + str(status)]
+	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + str(status)]
 
 	return iterate_info(win, left, right, lfields, rfields, width)
 
