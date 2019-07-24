@@ -41,7 +41,7 @@ def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
 	this.window = curses.newwin(height,width, y,x)
 
 
-def draw(mode: str, ftype : str) -> None:
+def draw(mode: str, ftype : str, panel : str) -> None:
 	"""
 	Draws the top banner based on the given mode.
 
@@ -52,10 +52,13 @@ def draw(mode: str, ftype : str) -> None:
 
 	this.window.erase()
 
-	nav_keybinds = ['[esc] command mode',
-					'[shift-l] left pane',
-					'[shift-r] right pane',
-					'[q] quit']
+	nav_keybinds = { 'esc' : '[esc] command mode',
+					 'left' : '[shift+l] left pane',
+					 'right' : '[shift+r] right pane',
+					 'quit' : '[q] quit'
+					 # according to vi HJKL commands, H = left, J = down, K = up, L = right
+	}
+
 	mode_keybinds = {'cluster' : '[1] cluster mode',
 					'app' : '[2] app mode',
 					'anomaly' : '[3] anomaly mode',
@@ -66,7 +69,7 @@ def draw(mode: str, ftype : str) -> None:
 					'logs' : '[l] logs',
 					'events' : '[e] k8s events'
 						}
-						
+
 	skipper_figlet_lines = shs.figlet_lines()
 
 	# draw figlet
@@ -90,14 +93,17 @@ def draw(mode: str, ftype : str) -> None:
 	# draw nav keybinds
 	y = keybinds_y
 	x = keybinds_x
-	for kb in nav_keybinds:
-		this.window.addstr(y, x, kb) 	# y, x, str
+	for kb in nav_keybinds.values():
+		if nav_keybinds[panel] == kb:
+			this.window.addstr(y, x, kb,  curses.A_STANDOUT) 	# y, x, str
+		else:
+			this.window.addstr(y, x, kb) 	# y, x, str
 		y += 1
 
 	# draw mode keybinds
 	# if mode drawn matches current mode, highlight it (currently bolds)
 	y = keybinds_y
-	x += max(len(kb) for kb in nav_keybinds) + this.LEFT_PADDING
+	x += max(len(kb) for kb in nav_keybinds.values()) + this.LEFT_PADDING
 	for kb in mode_keybinds.values():
 		if mode_keybinds[mode] == kb:
 			this.window.addstr(y, x, kb, curses.A_STANDOUT)	# y, x, str

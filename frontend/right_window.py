@@ -1,50 +1,54 @@
-import curses, requests, datetime, pytz, json
+import curses, requests, datetime, pytz, json, sys
 from dateutil.parser import parse
 from tabulate import tabulate
+
+this = sys.modules[__name__]
 
 INDENT_AMT = 4 # horizontal indent amount
 
 status = ""
 
-
 headers=["Type", "Reason", "Age", "From", "Message"]
 
-def draw(ftype, win, panel_height, panel_width, top_height, resource_data):
+def init(stdscr, panel_height, panel_width, top_height):
+	this.panel_height, this.panel_width, this.top_height = panel_height, panel_width, top_height
+	this.win = curses.newpad(panel_height, panel_width)
+	return this.win
+
+def draw(ftype, resource_data):
 	""" 
 	chooses whether to draw summary, yaml, or logs based on keybinding
 	:param ftype: yaml / logs / summary
-	:param win: right panel
-	:param panel_height: height of right panel
-	:param panel_width: width of right panel
-	:param top_height: right panel starting y
 	:resource data: all info relevant to resource
 	:return:
 	"""
-	if ftype == "yaml":
-		draw_yaml(win, panel_height, panel_width, top_height, resource_data)
-	elif ftype == "summary":
-		draw_summary(win, panel_height, panel_width, top_height, resource_data)
-	elif ftype == "logs":
-		draw_logs(win, panel_height, panel_width, top_height, resource_data)
-	elif ftype == "events":
-		draw_events(win, panel_height, panel_width, top_height, resource_data)
 
-def draw_yaml(win, panel_height, panel_width, top_height, resource_data):
-	""" 
-	draws the first lines of yaml that fits, TODO: also get them for custom resources and namespaces
-	:param win: right panel
-	:param panel_height: height of right panel
-	:param panel_width: width of right panel
-	:param top_height: right panel starting y
-	:resource data: all info relevant to resource
-	:return:
-	"""
+
 	win.erase()
 	win.border(curses.ACS_VLINE, " ", " ", " ", " ", " ", " ", " ")
-	rtype, rname = resource_data['rtype'], resource_data['name']
-	top_banner = win.derwin(3, panel_width, 0, 0) # window.derwin(nlines (optional), ncols (optional), begin_y, begin_x)
-	top_banner.addstr(1, INDENT_AMT, "Yaml: " + rname, curses.A_BOLD)
+	if resource_data == None:
+		win.refresh(0, 0, this.top_height, this.panel_width, this.top_height+this.panel_height, 2*this.panel_width)
+		return
+	this.rtype, this.rname = resource_data['rtype'], resource_data['name']
+	file_types = { "yaml" : "Yaml: "+ this.rname, "summary" :  this.rtype + ": " + this.rname, "logs" : "Logs: "+ this.rname, "events" : "Events: "+ this.rname}
+	# top_banner = win.derwin(3, panel_width, 0, 0) # window.derwin(nlines (optional), ncols (optional), begin_y, begin_x)
+	win.addstr(1, INDENT_AMT, file_types[ftype], curses.A_BOLD)
+	if ftype == "yaml":
+		draw_yaml(resource_data)
+	elif ftype == "summary":
+		draw_summary(resource_data)
+	elif ftype == "logs":
+		draw_logs(resource_data)
+	elif ftype == "events":
+		draw_events(resource_data)
 
+def draw_yaml(resource_data):
+	""" 
+	draws the first lines of yaml that fits, TODO: also get them for custom resources and namespaces
+	:resource data: all info relevant to resource
+	:return:
+	"""
+	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 	if resource_data["rtype"] not in ["Namespace", "Cluster", "Application", "Deployable"]:
 		yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
 		y = 3
@@ -53,24 +57,15 @@ def draw_yaml(win, panel_height, panel_width, top_height, resource_data):
 			y += 1
 	else:
 		win.addstr(3, INDENT_AMT, "Yaml not found")
-	win.refresh()
+	win.refresh(0, 0, top_height, panel_width, top_height+panel_height, 2*panel_width)
 
-def draw_logs(win, panel_height, panel_width, top_height, resource_data):
+def draw_logs(resource_data):
 	""" 
 	draws the first lines of logs that fit, also tells user about the nonexistence of logs for resources other than pods"
-	:param win: right panel
-	:param panel_height: height of right panel
-	:param panel_width: width of right panel
-	:param top_height: right panel starting y
 	:resource data: all info relevant to resource
 	:return:
 	"""
-	win.erase()
-	win.border(curses.ACS_VLINE, " ", " ", " ", " ", " ", " ", " ")
-	rtype, rname = resource_data['rtype'], resource_data['name']
-	top_banner = win.derwin(3, panel_width, 0, 0) # window.derwin(nlines (optional), ncols (optional), begin_y, begin_x)
-	top_banner.addstr(1, INDENT_AMT, "Logs: " + rname, curses.A_BOLD)
-
+	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 	if resource_data["rtype"] in ["Pod"]:
 		logs = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "logs")).json()["logs"].split('\n')
 		y = 3
@@ -79,22 +74,15 @@ def draw_logs(win, panel_height, panel_width, top_height, resource_data):
 			y += 1
 	else:
 		win.addstr(3, INDENT_AMT, "Logs only exist for pods")
-	win.refresh()
+	# win.refresh()
+	win.refresh(0, 0, top_height, panel_width, top_height+panel_height, 2*panel_width)
 
-def draw_events(win, panel_height, panel_width, top_height, resource_data):
+def draw_events(resource_data):
 	"""
 	queries database, formats events with tabulate and then draws it
-	:param y: y coord to start in
-	:param win: window to draw in
-	:param resource_data: all info related to resource of interest
-	:param width: width allowed before wrapping
 	:return:
 	"""
-	win.erase()
-	win.border(curses.ACS_VLINE, " ", " ", " ", " ", " ", " ", " ")
-	rtype, rname = resource_data['rtype'], resource_data['name']
-	top_banner = win.derwin(3, panel_width, 0, 0) # window.derwin(nlines (optional), ncols (optional), begin_y, begin_x)
-	top_banner.addstr(1, INDENT_AMT, "Events: " + rname, curses.A_BOLD)
+	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 
 	if rtype not in ["Cluster"]:
 		events_table = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "events")).json()["events"]
@@ -107,27 +95,20 @@ def draw_events(win, panel_height, panel_width, top_height, resource_data):
 				y = draw_str(win, y, INDENT_AMT, line, panel_width-2*INDENT_AMT)
 	else:
 		win.addstr(3, INDENT_AMT, "Events not found")
-	win.refresh()
+	# win.refresh()
+	win.refresh(0, 0, top_height, panel_width, top_height+panel_height, 2*panel_width)
 
-	# bottom = win.derwin(y+3, INDENT_AMT) # starting at y+3 due to height of top banner
-	# bottom.addstr(1, 0, "Events:")
-	# y += draw_str(bottom, 2, 0, tabulate(events_table, headers=headers), width-2*INDENT_AMT)
-	# temporary solution for formatting events, does not take care of text wrapping
-	# need to check source column
-	# return y
-
-def draw_summary(win, length, width, top_height, resource_data):
+def draw_summary(resource_data):
 	"""
 	refreshes and populates summary pane with info based on resource
 	creates top, left, and right derwins for top banner and columns
 	:param resource_data: all data related to the current resource to be displayed
 	:return:
 	"""
-	win.erase()
-	win.border(curses.ACS_VLINE, " ", " ", " ", " ", " ", " ", " ")	# left border
+	win, length, width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 
 	if resource_data == None:
-		win.refresh()
+		win.refresh(0, 0, top_height, width, top_height+length, 2*width)
 		return
 
 	rtype, rname = resource_data['rtype'], resource_data['name']
@@ -141,60 +122,40 @@ def draw_summary(win, length, width, top_height, resource_data):
 	resource_data["uid"]  = resource_data["uid"].split("_")[-1]
 
 	# top banner displaying resource type and name
-	top_banner = win.derwin(3, width, 0, 0) # window.derwin(nlines (optional), ncols (optional), begin_y, begin_x)
-	top_banner.addstr(1, INDENT_AMT, rtype + ": " + rname, curses.A_BOLD)
 	# top_banner.addstr(1, INDENT_AMT+width//2, "Name: " + rname, curses.A_BOLD)
 	# top_banner.hline(4, 1, curses.ACS_HLINE, 2*width-2)
 
 	info_length = length-3
-	left = win.derwin(info_length, width//2-INDENT_AMT, 3, INDENT_AMT)
-	right = win.derwin(info_length, width//2-2*INDENT_AMT, 3, width//2+INDENT_AMT)
+	this.left = win.derwin(info_length, width//2-INDENT_AMT, 3, INDENT_AMT)
+	this.right = win.derwin(info_length, width//2-2*INDENT_AMT, 3, width//2+INDENT_AMT)
 
 	if rtype == "Application":
-		y = draw_app(win, left, right, length, width, resource_data)
+		y = draw_app(resource_data)
 	elif rtype == "Cluster":
 		resource_data["status"] = ""
-		y = draw_cluster(win, left, right, length, width, resource_data)
+		y = draw_cluster(resource_data)
 	elif rtype == "Namespace":
 		resource_data["status"] = ""
-		y = draw_ns(win, left, right, length, width, resource_data)
+		y = draw_ns(resource_data)
 	elif rtype in ["Deployment", "Deployable", "StatefulSet", "ReplicaSet", "DaemonSet"]:
 		resource_data["status"] = ""
-		y = draw_work(win, left, right, length, width, resource_data)
+		y = draw_work(resource_data)
 	elif rtype == "Pod":
-		y = draw_pod(win, left, right, length, width, resource_data)
+		y = draw_pod(resource_data)
 	elif rtype == "Service":
-		y = draw_service(win, left, right, length, width, resource_data)
+		y = draw_service(resource_data)
 	else:
 		y = 0
 
-	y += 3 # to account for top banner length
-	draw_related_resources(win, y + 5, {})
-	# win.refresh(0, 0, top_height, width, top_height+length, 2*width)
-	win.refresh()
+	win.refresh(0, 0, top_height, width, top_height+length, 2*width)
 
-def draw_related_resources(win, y, resources):
-	"""
-	will list all related resources
-	:param win: window to draw in
-	:param y: row to start on
-	:param resources: dictionary of related resources
-	:return:
-	"""
-	win.addstr(y, INDENT_AMT, "Related Resources", curses.A_BOLD)
-	# to be filled with other related resources
-
-def draw_service(win, left, right, length, width, resource_data):
+def draw_service(resource_data):
 	"""
 	fills in left and right windows will info relevant to service
-	:param win: window to draw in
-	:param left: left column window
-	:param right: right column window
-	:param length: panel length
-	:param width: panel width for formatting
 	:resource data: all info relevant to service
 	:return: y coordinate to start drawing related resources on
 	"""
+	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
 		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
@@ -220,17 +181,13 @@ def draw_service(win, left, right, length, width, resource_data):
 
 	return max(lefty,righty)
 
-def draw_work(win, left, right, length, width, resource_data):
+def draw_work(resource_data):
 	""" 
 	fills in left and right windows will info relevant to Deployment / Deployable / StatefulSet / ReplicaSet / DaemonSet
-	:param win: window to draw in
-	:param left: left column window
-	:param right: right column window
-	:param length: panel length
-	:param width: panel width for formatting
 	:resource data: all info relevant to Deployment / Deployable / StatefulSet / ReplicaSet / DaemonSet
 	:return: y coordinate to start drawing related resources on
 	"""
+	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
 		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
@@ -254,17 +211,13 @@ def draw_work(win, left, right, length, width, resource_data):
 	# win.addstr(y, INDENT_AMT, "y count: "+str(y))
 	return y
 
-def draw_ns(win, left, right, length, width, resource_data):
+def draw_ns(resource_data):
 	"""
 	fills in left and right windows will info relevant to namespace
-	:param win: window to draw in
-	:param left: left column window
-	:param right: right column window
-	:param length: panel length
-	:param width: panel width for formatting
 	:resource data: all info relevant to namespace
 	:return: y coordinate to start drawing related resources on
 	"""
+	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
 		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
@@ -277,18 +230,13 @@ def draw_ns(win, left, right, length, width, resource_data):
 
 	return iterate_info(win, left, right, lfields, rfields, width)
 
-# Further needed info: labels, status, age, deployables, events)
-def draw_app(win, left, right, length, width, resource_data):
+def draw_app(resource_data):
 	"""
 	fills in left and right windows will info relevant to app
-	:param win: window to draw in
-	:param left: left column window
-	:param right: right column window
-	:param length: panel length
-	:param width: panel width for formatting
 	:resource data: all info relevant to app
 	:return: y coordinate to start drawing related resources on
 	"""
+	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
 		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
@@ -309,17 +257,13 @@ def draw_app(win, left, right, length, width, resource_data):
 
 	return max(lefty,righty)
 
-def draw_pod(win, left, right, length, width, resource_data):
+def draw_pod(resource_data):
 	"""
 	fills in left and right windows will info relevant to pod
-	:param win: window to draw in
-	:param left: left column window
-	:param right: right column window
-	:param length: panel length
-	:param width: panel width for formatting
 	:resource data: all info relevant to pod
 	:return: y coordinate to start drawing related resources on
 	"""
+	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
 		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
@@ -348,18 +292,13 @@ def draw_pod(win, left, right, length, width, resource_data):
 	y = max(lefty,righty)
 	return y
 
-
-def draw_cluster(win, left, right , length, width, resource_data):
+def draw_cluster(resource_data):
 	"""
 	fills in left and right windows will info relevant to cluster
-	:param win: window to draw in
-	:param left: left column window
-	:param right: right column window
-	:param length: panel length
-	:param width: panel width for formatting
 	:resource data: all info relevant to cluster
 	:return: y coordinate to start drawing related resources on
 	"""
+	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	lines = [ "Welcome to Skipper, a cross-cluster terminal application", \
 			  "We will be loading in more info about your cluster in the future", \
 			  "But for now please scroll and arrow right to view more resources"
