@@ -1,5 +1,7 @@
 import curses, requests, datetime, pytz, json, sys
 from dateutil.parser import parse
+import tabulate
+tabulate.PRESERVE_WHITESPACE = True
 from tabulate import tabulate
 
 this = sys.modules[__name__]
@@ -8,7 +10,8 @@ INDENT_AMT = 4 # horizontal indent amount
 
 status = ""
 
-headers=["Type", "Reason", "Age", "From", "Message"]
+event_headers=["Type", "Reason", "Age", "From", "Message"]
+metrics_headers=["","CPU (cores)","CPU Limit","MEM (bytes)","MEM Limit"]
 
 def init(stdscr, panel_height, panel_width, top_height):
 	this.panel_height, this.panel_width, this.top_height = panel_height, panel_width, top_height
@@ -89,7 +92,7 @@ def draw_events(resource_data):
 		if events_table == "Events not found":
 			draw_str(win, 3, INDENT_AMT, events_table, panel_width-2*INDENT_AMT)
 		else:
-			lines = tabulate(events_table, headers=headers).split('\n')
+			lines = tabulate(events_table, headers=event_headers).split('\n')
 			y = 3
 			for line in lines:
 				y = draw_str(win, y, INDENT_AMT, line, panel_width-2*INDENT_AMT)
@@ -274,6 +277,8 @@ def draw_pod(resource_data):
 		ready = info["ready"] if info.get("ready") and (info.get("ready") != None) else "None"
 		restarts = info["restarts"] if info.get("restarts") and (info.get("restarts") != None) else "None"
 		container_count = info["container_count"] if info.get("container_count") and (info.get("container_count") != None) else "None"
+		pod_metrics = info["pod_metrics"]
+		container_metrics = info["container_metrics"]
 	else:
 		labels, owner_refs, host_ip, phase, pod_ip, ready, restarts, container_count = None, None, "None", "None", "None", "None", "None", "None"
 
@@ -289,7 +294,31 @@ def draw_pod(resource_data):
 	if owner_refs is not None:
 		righty = draw_pairs(right, righty, "Owner References:", width//2-2*INDENT_AMT, owner_refs)
 
-	y = max(lefty,righty)
+	y = max(lefty,righty) + 3
+	win.addstr(y + 1, INDENT_AMT, "Compute Resources", curses.A_BOLD)
+	y += 3
+
+	if container_metrics is None:
+		win.addstr(y, INDENT_AMT, "Could not retrieve pod/container data")
+		y += 1
+	else:
+		metrics_table = [['Pod', pod_metrics['cpu'], pod_metrics['cpu_limit'], pod_metrics['mem'], pod_metrics['mem_limit']]]
+		metrics_table.append(["", "", "", "", ""])
+		metrics_table.append(["Containers:", "", "", "", ""])
+
+		for ct in container_metrics['containers']:
+			ct_dict = container_metrics['containers'][ct]
+			metrics_table.append([" "*INDENT_AMT + ct, ct_dict['cpu'], ct_dict['cpu_limit'], ct_dict['mem'], ct_dict['mem_limit']])
+		if container_metrics['init_containers']:
+			metrics_table.append(["", "", "", "", ""])
+			metrics_table.append(["Init Containers:", "", "", "", ""])
+			for ct in container_metrics['init_containers']:
+				ct_dict = container_metrics['init_containers'][ct]
+				metrics_table.append([" "*INDENT_AMT + ct, ct_dict['cpu'], ct_dict['cpu_limit'], ct_dict['mem'], ct_dict['mem_limit']])
+		lines = tabulate(metrics_table, headers=metrics_headers).split('\n')
+		for line in lines:
+			y = draw_str(win, y, INDENT_AMT, line, width-2*INDENT_AMT)
+
 	return y
 
 def draw_cluster(resource_data):

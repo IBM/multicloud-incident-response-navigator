@@ -51,8 +51,11 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
     :param namespace: (str) pod namespace
     :param pod_name: (str) pod name
     :return: ((Dict) pod_final, (Dict) containers_final)
-                where pod_final = {'cpu': <value>, 'memory': <value>},
-                and containers_final is Dict(<container_name>, {'cpu': <value>, 'memory': <value>}), or None if no container info
+                where if resource_metric_dict = {'cpu': (str) current_cpu, 'cpu_limit': (str) cpu_limit or 'N/A',
+                                                'mem': (str) current_mem, 'mem_limit': (str) mem_limit or 'N/A'},
+                then pod_final = resource_metric_dict (for pod),
+                and containers_final = Dict('init_containers': Dict(<container_name>, resource_metric_dict),
+                                            'containers': Dict(<container_name>, resource_metric_dict)), or None if no container info
     """
 
     def get_pod_container_usage(cluster_name, namespace, pod_name):
@@ -82,7 +85,7 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
 
     def get_pod_container_limits(cluster_name, namespace, pod_name):
         """
-        Returns Dict(container_name, (cpu, mem)) for container resource limits
+        Returns Dict(container_name, (cpu, mem, (bool) is_init_container)) for container resource limits
             - None values for cpu and mem mean no limits were specified
         """
         api_client = k8s_api.api_client(cluster_name=cluster_name, api_class="CoreV1Api")
@@ -92,6 +95,7 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
         containers = pod_object.spec.containers
         for ct in containers:
             name = ct.name
+
             try:
                 ct_cpu_limit = ct.resources.limits.get('cpu')
             except:
@@ -100,7 +104,21 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
                 ct_mem_limit = ct.resources.limits.get('memory')
             except:
                 ct_mem_limit = None
-            limits_by_container[name] = (ct_cpu_limit, ct_mem_limit)
+            limits_by_container[name] = (ct_cpu_limit, ct_mem_limit, False)
+
+        if pod_object.spec.init_containers is not None:
+            for ct in pod_object.spec.init_containers:
+                name = ct.name
+
+                try:
+                    ct_cpu_limit = ct.resources.limits.get('cpu')
+                except:
+                    ct_cpu_limit = None
+                try:
+                    ct_mem_limit = ct.resources.limits.get('memory')
+                except:
+                    ct_mem_limit = None
+                limits_by_container[name] = (ct_cpu_limit, ct_mem_limit, True)
 
         return limits_by_container
 
@@ -113,13 +131,21 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
     # initialize variables used to keep cumulative sum
     pod_cpu_usage = 0
     pod_mem_usage = 0
-    pod_cpu_limit = None if None in [container_limits[ct][0] for ct in container_limits] else 0
-    pod_mem_limit = None if None in [container_limits[ct][1] for ct in container_limits] else 0
 
-    containers_final = {}
+    # check if a pod limit makes sense to calculate - all (non-init) containers have to have a limit
+    pod_cpu_limit, pod_mem_limit = 0, 0
+    for ct in container_limits:
+        if container_limits[ct][2]: # is init container
+            continue
+        if container_limits[ct][0] is None:
+            pod_cpu_limit = None
+        if container_limits[ct][1] is None:
+            pod_mem_limit = None
+
+    containers_final = {'init_containers': {}, 'containers': {}}
     for ct_name in container_usage.keys():
         ct_cpu_usage, ct_mem_usage = container_usage[ct_name]
-        ct_cpu_limit, ct_mem_limit = container_limits[ct_name]
+        ct_cpu_limit, ct_mem_limit, is_init_container = container_limits[ct_name]
 
         ct_cpu_pct = ""
         ct_mem_pct = ""
@@ -132,11 +158,11 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
         if ct_cpu_limit is not None:
             # calculate percentage (current/limit) and return the formatted string
             value, unit = get_value_and_unit(ct_cpu_limit)
-            limit_value = convert_to_base_unit(value, unit)
-            if pod_cpu_limit is not None:
-                pod_cpu_limit += limit_value
+            ct_cpu_limit_value = convert_to_base_unit(value, unit)
+            if pod_cpu_limit is not None and not is_init_container:
+                pod_cpu_limit += ct_cpu_limit_value
 
-            ct_cpu_pct = "(" + str(round(ct_cpu_usage_value / limit_value * 100)) + "%)"
+            ct_cpu_pct = "(" + str(round(ct_cpu_usage_value / ct_cpu_limit_value * 100)) + "%)"
 
         # same process for memory
         value, unit = get_value_and_unit(ct_mem_usage)
@@ -145,13 +171,20 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
 
         if ct_mem_limit is not None:
             value, unit = get_value_and_unit(ct_mem_limit)
-            limit_value = convert_to_base_unit(value, unit)
-            if pod_mem_limit is not None:
-                pod_mem_limit += limit_value
+            ct_mem_limit_value = convert_to_base_unit(value, unit)
+            if pod_mem_limit is not None and not is_init_container:
+                pod_mem_limit += ct_mem_limit_value
 
-            ct_mem_pct = "(" + str(round(ct_mem_usage_value / limit_value * 100)) + "%)"
+            ct_mem_pct = "(" + str(round(ct_mem_usage_value / ct_mem_limit_value * 100)) + "%)"
 
-        containers_final[ct_name] = {'cpu': ct_cpu_usage + " " + ct_cpu_pct, 'memory': ct_mem_usage + " " + ct_mem_pct}
+        ct_dict = {'cpu': si_format(ct_cpu_usage_value, precision=0, format_str='{value}{prefix}') + " " + ct_cpu_pct,
+                    'cpu_limit': si_format(ct_cpu_limit_value, precision=0, format_str='{value}{prefix}') if ct_cpu_limit is not None else "N/A",
+                    'mem': size(ct_mem_usage_value, system=iec) + " " + ct_mem_pct,
+                    'mem_limit': size(ct_mem_limit_value, system=iec) if ct_mem_limit is not None else "N/A"}
+        if is_init_container:
+            containers_final['init_containers'][ct_name] = ct_dict
+        else:
+            containers_final['containers'][ct_name] = ct_dict
 
     # calculate pod percentages
     pod_cpu_pct = ""
@@ -162,11 +195,13 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
         pod_mem_pct = "(" + str(round(pod_mem_usage / pod_mem_limit * 100)) + "%)"
 
     pod_final = {'cpu': si_format(pod_cpu_usage, precision=0, format_str='{value}{prefix}') + " " + pod_cpu_pct,
-                 'memory': size(pod_mem_usage, system=iec) + " " + pod_mem_pct}
+                 'cpu_limit': si_format(pod_cpu_limit, precision=0,format_str='{value}{prefix}') if pod_cpu_limit is not None else "N/A",
+                 'mem': size(pod_mem_usage, system=iec) + " " + pod_mem_pct,
+                 'mem_limit': size(pod_mem_limit, system=iec) if pod_mem_limit is not None else "N/A",}
 
     return pod_final, containers_final
 
 if __name__ == "__main__":
-    # print(aggregate_pod_metrics('c2-e-us-east-containers-cloud-ibm-com:31140','ibm-system','ibm-cloud-provider-ip-169-47-179-226-777f4fbc8-mjwl5'))
-    print(aggregate_pod_metrics('mycluster','default','busybox'))
+    print(aggregate_pod_metrics('iks-extremeblue','kube-system','public-cr8a6558242f3d4cb18af6703d10b27910-alb1-b6f9688dc-dbb8q'))
+    print(aggregate_pod_metrics('iks-extremeblue', 'default','binging-whale-gbapp-redismaster-76994bf95d-lkl8k'))
     # print(get_value_and_unit('100'))
