@@ -116,23 +116,16 @@ def run_skipper(stdscr):
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 			table_data["mode"] = mode
 
-			# if we are coming from a different mode, restore previous search results
-			# query_state is initially set to be the empty search results
-			if last_mode != "query":
-				resource_by_uid = query_state["resource_by_uid"]
-				current_uid = query_state["current_uid"]
-				table_data = query_state["table_data"]
-
 			# draw right before left so that cursor shows up in search bar
-			rwin.draw(ftype, resource_by_uid[current_uid])
+			rwin.draw(ftype, query_state['resource_by_uid'][query_state['current_uid']])
 
 			# draw the left window
 			last_mode = "query"
-			lwin.set_contents(**table_data)
+			lwin.set_contents(**query_state['table_data'])
 			lwin.draw()
 
 			# set state variables for left window after user presses ESC
-			resource_by_uid, current_uid, table_data = query_mode(stdscr, ftype)
+			resource_by_uid, current_uid, table_data = query_mode(stdscr, ftype, query_state)
 
 			# save the search results state in case we come back to query mode
 			query_state["resource_by_uid"] = copy.deepcopy(resource_by_uid)
@@ -211,7 +204,7 @@ def run_skipper(stdscr):
 						table_data, resource_by_uid, current_uid = update(table_data["mode"], table_data, data, twin, lwin, ftype, panel_side)
 
 
-def query_mode(stdscr, ftype) -> Tuple[Dict, str, Dict]:
+def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 	"""
 	Continuously captures input from user, displays in search bar, and updates left and right window with results.
 
@@ -227,18 +220,9 @@ def query_mode(stdscr, ftype) -> Tuple[Dict, str, Dict]:
 	# state variables needed to restore search results
 	# resource_by_uid and current_uid are needed for going up/down search results
 	# table_data is needed to render search results
-	resource_by_uid = {"empty": None}
-	current_uid = "empty"
-	table_data = {"mode": "query",
-							"col_names" : ["kind", "name"],
-							"col_widths" : [20, 60],
-							"table" : [],
-							"row_selector" : 0,
-							"start_y" : 0,
-							"path_names" : [],
-							"path_rtypes" : [],
-							"path_uids" : [],
-							"table_uids" : []}
+	resource_by_uid = query_state['resource_by_uid']
+	current_uid = query_state['current_uid']
+	table_data = query_state['table_data']
 
 	# variables necessary to render right pane
 	height, width = stdscr.getmaxyx()
@@ -262,12 +246,12 @@ def query_mode(stdscr, ftype) -> Tuple[Dict, str, Dict]:
 			sb.move_right()
 		elif c == 258:	# down arrow
 			current_uid = lwin.move_down()
-			curses.curs_set(0)
+			table_data['row_selector'] = lwin.row_selector
 			rwin.draw(ftype, resource_by_uid[current_uid])
 			sb.show_cursor()
 		elif c == 259:	# up arrow
 			current_uid = lwin.move_up()
-			curses.curs_set(0)
+			table_data['row_selector'] = lwin.row_selector
 			rwin.draw(ftype, resource_by_uid[current_uid])
 			sb.show_cursor()
 		elif c == 1:	# ctrl-a
