@@ -32,24 +32,21 @@ def run_skipper(stdscr):
 	stdscr.erase()
 	stdscr.refresh()
 
-	# initialize and draw top window
-	height, width = stdscr.getmaxyx()
-	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0)	# height, width, y, x
 	mode = START_MODE
 	ftype = START_FTYPE
 	panel_side = START_PANEL
+
+	# initialize and draw top window
+	height, width = stdscr.getmaxyx()
+	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0)	# height, width, y, x
 	twin.draw(mode=mode, ftype=ftype, panel=panel_side)
-
 	top_height, top_width = twin.window.getmaxyx()
-
 	panel_height = height-top_height
 	panel_width = width//2
 
 	# initialize and draw windows
-	lwin.init_win(stdscr, height=height-top_height, width=width//2, y=top_height, x=0)
-	rpane = rwin.init(stdscr, panel_height, panel_width, top_height)
-
-	# rpane = curses.newwin(panel_height, panel_width, top_height, panel_width)
+	lwin.init_win(stdscr, height=panel_height, width=width//2, y=top_height, x=0)
+	rwin.init(stdscr, panel_height, panel_width, top_height)
 
 	if len(data['table_items']) > 0:
 		table_data = {	"mode": START_MODE,
@@ -88,7 +85,7 @@ def run_skipper(stdscr):
 							"table_uids" : []}
 				}
 
-
+	modes = { ord("y") : "yaml", ord("l") : "logs", ord("s") : "summary", ord("e") : "events"}
 	# start listening for keystrokes, and act accordingly
 	while c != ord('q'):
 		c = stdscr.getch()
@@ -132,27 +129,13 @@ def run_skipper(stdscr):
 			query_state["current_uid"] = copy.copy(current_uid)
 			query_state["table_data"] = copy.deepcopy(table_data)
 
-		elif c == ord('y'):
-			ftype = "yaml"
+		elif c in modes.keys():
+			ftype = modes[c]
+			rwin.scroll_y = 0
 			rwin.draw(ftype, resource_by_uid[current_uid])
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 
-		elif c == ord('l'):
-			ftype = "logs"
-			rwin.draw(ftype, resource_by_uid[current_uid])
-			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
-
-		elif c == ord('s'):
-			ftype = "summary"
-			rwin.draw(ftype, resource_by_uid[current_uid])
-			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
-
-		elif c == ord('e'):
-			ftype = "events"
-			rwin.draw(ftype, resource_by_uid[current_uid])
-			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
-
-		elif c ==  ord('L') :
+		elif c == ord('L') :
 			panel_side = "left"
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 
@@ -163,16 +146,22 @@ def run_skipper(stdscr):
 		elif c == curses.KEY_UP:
 			if panel_side == "left":
 				current_uid = lwin.move_up()
+				rwin.scroll_y, rwin.scroll_x = 0, 0
 				rwin.draw(ftype, resource_by_uid[current_uid])
 			else:
-				...
+				if rwin.scroll_y > 0:
+					rwin.scroll_y -= 1
+					rwin.draw(ftype, resource_by_uid[current_uid])
 
 		elif c == curses.KEY_DOWN:
 			if panel_side == "left":
 				current_uid = lwin.move_down()
+				rwin.scroll_y, rwin.scroll_x = 0, 0
 				rwin.draw(ftype, resource_by_uid[current_uid])
 			else:
-				...
+				if rwin.scroll_y < rwin.doc_height - rwin.panel_height:
+					rwin.scroll_y += 1
+					rwin.draw(ftype, resource_by_uid[current_uid])
 
 		elif c == curses.KEY_RIGHT or c == 10:
 			if panel_side == "left":
@@ -185,6 +174,7 @@ def run_skipper(stdscr):
 						ltable.append( lwin.table_start_y )
 						# update and redraw
 						table_data['start_y'] = 0
+						rwin.scroll_y, rwin.scroll_x = 0, 0
 						table_data, resource_by_uid, current_uid = update(table_data["mode"], table_data, data, twin, lwin, ftype, panel_side)
 
 		elif c == curses.KEY_LEFT:
@@ -201,6 +191,7 @@ def run_skipper(stdscr):
 						parent_uid = table_data['path_uids'][-1]
 						data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(table_data["mode"], parent_uid)).json()
 						table_data['start_y'] = start_y
+						rwin.scroll_y, rwin.scroll_x = 0, 0
 						table_data, resource_by_uid, current_uid = update(table_data["mode"], table_data, data, twin, lwin, ftype, panel_side)
 
 
@@ -223,13 +214,6 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 	resource_by_uid = query_state['resource_by_uid']
 	current_uid = query_state['current_uid']
 	table_data = query_state['table_data']
-
-	# variables necessary to render right pane
-	height, width = stdscr.getmaxyx()
-	top_height, top_width = twin.window.getmaxyx()
-	panel_height = height-top_height
-	panel_width = width//2
-	rpane = curses.newwin(panel_height, panel_width, top_height, panel_width)
 
 	c = stdscr.getch()
 	while True:

@@ -1,4 +1,4 @@
-import curses, requests, datetime, pytz, json, sys
+import curses, requests, datetime, pytz, json, sys, math
 from dateutil.parser import parse
 import tabulate
 tabulate.PRESERVE_WHITESPACE = True
@@ -14,9 +14,21 @@ event_headers=["Type", "Reason", "Age", "From", "Message"]
 metrics_headers=["","CPU (cores)","CPU Limit","MEM (bytes)","MEM Limit"]
 
 def init(stdscr, panel_height, panel_width, top_height):
+	""" 
+	makes initial pad and top window
+	:param stdscr: window to draw within
+	:param panel_height: height of pad
+	:param panel_width: width of pad
+	:param top_height: height of top panel (y where the top banner should start drawing)
+	:return:
+	"""
 	this.panel_height, this.panel_width, this.top_height = panel_height, panel_width, top_height
+	this.scroll_y, this.scroll_x = 0, 0
+	draw_pad(panel_height, panel_width)
+	this.background_win = curses.newwin(panel_height, panel_width, top_height, panel_width)
+
+def draw_pad(panel_height, panel_width):
 	this.win = curses.newpad(panel_height, panel_width)
-	return this.win
 
 def draw(ftype, resource_data):
 	""" 
@@ -25,44 +37,100 @@ def draw(ftype, resource_data):
 	:resource data: all info relevant to resource
 	:return:
 	"""
-
-
-	win.erase()
-	win.border(curses.ACS_VLINE, " ", " ", " ", " ", " ", " ", " ")
+	this.win.erase()
+	this.background_win.erase()
 	if resource_data == None:
-		win.refresh(0, 0, this.top_height, this.panel_width, this.top_height+this.panel_height, 2*this.panel_width)
+		this.background_win.border(curses.ACS_VLINE, " ", " ", " ", curses.ACS_VLINE, " ", " ", " ")
+		this.background_win.refresh()
+		this.win.refresh(0, 0, this.top_height+2, this.panel_width+1, this.panel_height+this.top_height-1, 2*this.panel_width-2)
 		return
-	this.rtype, this.rname = resource_data['rtype'], resource_data['name']
-	file_types = { "yaml" : "Yaml: "+ this.rname, "summary" :  this.rtype + ": " + this.rname, "logs" : "Logs: "+ this.rname, "events" : "Events: "+ this.rname}
-	# top_banner = win.derwin(3, panel_width, 0, 0) # window.derwin(nlines (optional), ncols (optional), begin_y, begin_x)
-	win.addstr(1, INDENT_AMT, file_types[ftype], curses.A_BOLD)
-	if ftype == "yaml":
-		draw_yaml(resource_data)
-	elif ftype == "summary":
-		draw_summary(resource_data)
-	elif ftype == "logs":
-		draw_logs(resource_data)
-	elif ftype == "events":
-		draw_events(resource_data)
 
-def draw_yaml(resource_data):
+	this.rtype, this.rname = resource_data['rtype'], resource_data['name']
+
+	file_types = { "yaml" : "Yaml: "+ this.rname, "summary" :  this.rtype + ": " + this.rname, "logs" : "Logs: "+ this.rname, "events" : "Events: "+ this.rname}
+
+	if ftype == "yaml":
+		this.yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
+		this.doc_height = max(this.panel_height, calc_height(this.yaml, this.panel_width-INDENT_AMT) + 3)
+		this.doc_width = this.panel_width
+		draw_pad(this.doc_height, this.doc_width)
+		draw_yaml(resource_data, this.yaml)
+
+	elif ftype == "logs":
+		this.logs = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "logs")).json()["logs"].split('\n')
+		this.doc_height = max(this.panel_height, calc_height(this.logs, this.panel_width-INDENT_AMT) + 3)
+		this.doc_width = this.panel_width
+		draw_pad(this.doc_height, this.doc_width)
+		draw_logs(resource_data, this.logs)
+
+	elif ftype == "events":
+		events_table = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "events")).json()["events"]
+		""" 
+		when events not found for a resource, message with notification is printed
+		when events do exist for the resource, overflow lines of the message column gets wrapped by breaking up the lines and adding them as individual rows
+		"""
+		if events_table == "Events not found":
+			this.doc_height = this.panel_height
+			this.doc_width = this.panel_width
+			draw_str(this.win, 1, INDENT_AMT, events_table, this.panel_width-2*INDENT_AMT)
+		else:
+			new_table = []
+			if len(events_table):
+				short_table = [ event[:-1] for event in events_table ]
+				tabulated_short = tabulate(short_table, headers=event_headers[:-1],  tablefmt="github")
+				short_width = len(tabulated_short.split('\n')[0])
+				width = (this.panel_width-short_width-INDENT_AMT) - 5 # calculating width of column
+
+				messages = [ event[-1] for event in events_table ]
+				for msg, event in zip(messages, short_table):
+					if len(msg):
+						msg = [ msg[i:i + width] for i in range(0, len(msg), width)]
+						event.append(msg[0])
+					else:
+						event.append(msg)
+					new_table.append(event)
+					if len(msg) > 1:
+						for line in msg[1:]:
+							new_table.append(["", "", "", "", line])
+
+
+				new_table = tabulate(new_table, headers=event_headers, tablefmt="github").split('\n')
+
+			else:
+				new_table.append("No events found")
+
+			this.doc_width = this.panel_width
+			this.doc_height = max(this.panel_height, len(events_table) + 3)
+			draw_pad(this.doc_height, this.doc_width)
+			draw_events(resource_data, new_table)
+
+
+	elif ftype == "summary":
+		this.doc_height = this.panel_height
+		draw_summary(resource_data)
+	# INDENT_AMT+1 is to match the alignment
+	this.background_win.addstr(1, INDENT_AMT+1, file_types[ftype], curses.A_BOLD)
+	this.background_win.border(curses.ACS_VLINE, " ", " ", " ", curses.ACS_VLINE, " ", " ", " ")
+	this.background_win.refresh()
+	# this.win.border(curses.ACS_VLINE, " ", " ", " ", curses.ACS_VLINE, " ", " ", " ")
+	this.win.refresh(this.scroll_y, this.scroll_x, top_height+2, panel_width+1, this.panel_height+this.top_height-1, 2*this.panel_width-2)
+
+def draw_yaml(resource_data, yaml):
 	""" 
 	draws the first lines of yaml that fits, TODO: also get them for custom resources and namespaces
 	:resource data: all info relevant to resource
 	:return:
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
-	if resource_data["rtype"] not in ["Cluster"]:
-		yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
-		y = 3
-		for i in range (min(panel_height-3, len(yaml))):
-			win.addstr(y, INDENT_AMT, yaml[i])
-			y += 1
-	else:
-		win.addstr(3, INDENT_AMT, "Yaml not found")
-	win.refresh(0, 0, top_height, panel_width, top_height+panel_height, 2*panel_width)
 
-def draw_logs(resource_data):
+	if resource_data["rtype"] not in ["Cluster"]:
+		y = 1
+		for i in range (len(yaml)):
+			y = draw_str(win, y, INDENT_AMT, yaml[i], panel_width-INDENT_AMT-1)
+	else:
+		win.addstr(1, INDENT_AMT, "Yaml not found")
+
+def draw_logs(resource_data, logs):
 	""" 
 	draws the first lines of logs that fit, also tells user about the nonexistence of logs for resources other than pods"
 	:resource data: all info relevant to resource
@@ -70,36 +138,21 @@ def draw_logs(resource_data):
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 	if resource_data["rtype"] in ["Pod"]:
-		logs = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "logs")).json()["logs"].split('\n')
-		y = 3
-		for i in range (min(panel_height-3, len(logs))):
-			draw_str(win, 3, INDENT_AMT, logs[i], panel_width-INDENT_AMT)
-			y += 1
+		for i in range (len(logs)):
+			draw_str(win, 1, INDENT_AMT, logs[i], panel_width-INDENT_AMT)
 	else:
-		win.addstr(3, INDENT_AMT, "Logs only exist for pods")
-	# win.refresh()
-	win.refresh(0, 0, top_height, panel_width, top_height+panel_height, 2*panel_width)
+		win.addstr(1, INDENT_AMT, "Logs only exist for pods")
 
-def draw_events(resource_data):
+def draw_events(resource_data, events_table):
 	"""
 	queries database, formats events with tabulate and then draws it
 	:return:
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 
-	if rtype not in ["Cluster"]:
-		events_table = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "events")).json()["events"]
-		if events_table == "Events not found":
-			draw_str(win, 3, INDENT_AMT, events_table, panel_width-2*INDENT_AMT)
-		else:
-			lines = tabulate(events_table, headers=event_headers).split('\n')
-			y = 3
-			for line in lines:
-				y = draw_str(win, y, INDENT_AMT, line, panel_width-2*INDENT_AMT)
-	else:
-		win.addstr(3, INDENT_AMT, "Events not found")
-	# win.refresh()
-	win.refresh(0, 0, top_height, panel_width, top_height+panel_height, 2*panel_width)
+	y = 1
+	for line in events_table:
+		y = draw_str(win, y, INDENT_AMT, line, panel_width-INDENT_AMT)
 
 def draw_summary(resource_data):
 	"""
@@ -111,7 +164,7 @@ def draw_summary(resource_data):
 	win, length, width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 
 	if resource_data == None:
-		win.refresh(0, 0, top_height, width, top_height+length, 2*width)
+		this.win.refresh(0, 0, this.top_height+2, this.panel_width+1, this.panel_height+this.top_height-1, 2*this.panel_width-2)
 		return
 
 	rtype, rname = resource_data['rtype'], resource_data['name']
@@ -124,13 +177,9 @@ def draw_summary(resource_data):
 
 	resource_data["uid"]  = resource_data["uid"].split("_")[-1]
 
-	# top banner displaying resource type and name
-	# top_banner.addstr(1, INDENT_AMT+width//2, "Name: " + rname, curses.A_BOLD)
-	# top_banner.hline(4, 1, curses.ACS_HLINE, 2*width-2)
-
-	info_length = length-3
-	this.left = win.derwin(info_length, width//2-INDENT_AMT, 3, INDENT_AMT)
-	this.right = win.derwin(info_length, width//2-2*INDENT_AMT, 3, width//2+INDENT_AMT)
+	info_length = length - 3
+	this.left = win.derwin(info_length, width//2-INDENT_AMT, 1, INDENT_AMT)
+	this.right = win.derwin(info_length, width//2-2*INDENT_AMT, 1, width//2+INDENT_AMT)
 
 	if rtype == "Application":
 		y = draw_app(resource_data)
@@ -149,8 +198,6 @@ def draw_summary(resource_data):
 		y = draw_service(resource_data)
 	else:
 		y = 0
-
-	win.refresh(0, 0, top_height, width, top_height+length, 2*width)
 
 def draw_service(resource_data):
 	"""
@@ -211,7 +258,6 @@ def draw_work(resource_data):
 		y = draw_pairs(left, y, "Labels:", width//2-INDENT_AMT, labels)
 	if status is not None:
 		y = draw_pairs(left, y, "Status:", width//2-INDENT_AMT, status)
-	# win.addstr(y, INDENT_AMT, "y count: "+str(y))
 	return y
 
 def draw_ns(resource_data):
@@ -332,7 +378,7 @@ def draw_cluster(resource_data):
 			  "We will be loading in more info about your cluster in the future", \
 			  "But for now please scroll and arrow right to view more resources"
 				]
-	lefty = 3
+	lefty = 1
 	for line in lines:
 		lefty = draw_str(win, lefty, INDENT_AMT, line, width)+1
 	return lefty
@@ -352,6 +398,13 @@ def calc_age(time):
 			return str(minutes)+"m"
 		return str(hours)+"h"
 	return str(time.days)+"d"
+
+def calc_height(lines, width):
+	y = 0
+	for line in lines:
+		y += math.ceil(len(line) / width)
+	return y
+
 
 def iterate_info(win, left, right, lfields, rfields, width):
 	"""

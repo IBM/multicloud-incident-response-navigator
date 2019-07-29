@@ -24,6 +24,8 @@ class ResourceFiles:
 			client = self.clients[cluster]["apps_client"]
 		elif type in ["Pod", "Service", "Event", "Namespace"]:
 			client = self.clients[cluster]["core_client"]
+		else:
+			return "Yaml not found"
 
 		if type == "DaemonSet":
 			doc = client.read_namespaced_daemon_set(name, namespace).to_dict()
@@ -43,7 +45,7 @@ class ResourceFiles:
 			doc = self.dpbs[name]
 		elif type == "Namespace":
 			doc = client.read_namespace(name).to_dict()
-			
+
 		return yaml.dump(doc, sort_keys=False)
 
 	def parse_time(self, time):

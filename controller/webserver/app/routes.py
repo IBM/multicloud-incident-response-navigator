@@ -83,7 +83,9 @@ def start(mode):
 		app_uid = app_cluster + "_" + app["metadata"]["uid"]
 		app_ns = app["metadata"]["namespace"]
 		labels = app["metadata"]["labels"] if app["metadata"].get("labels") else "None"
-		info = { "labels" : labels, "status" : app["status"], \
+		status = app["metadata"]["status"] if app["metadata"].get("status") else "None"
+
+		info = { "labels" : labels, "status" : status, \
 				 "deployables" : app["metadata"]["annotations"]['apps.ibm.com/deployables']}
 
 		data = {'uid': app_uid, "created_at": app["metadata"].get("creationTimestamp"), "rtype": "Application",
@@ -187,7 +189,7 @@ def get_resource_info(uid, info_type):
 		return jsonify(yaml=info_handler.get_yaml(resource.rtype, resource.name, resource.namespace, resource.cluster))
 	elif info_type == 'events':
 		if resource == None:
-			return jsonify(yaml="Events not found")
+			return jsonify(events="Events not found")
 		return jsonify(events=info_handler.get_events(resource.cluster, resource.namespace, uid))
 	elif info_type == 'logs':
 		if resource == None:
