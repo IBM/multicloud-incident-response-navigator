@@ -52,7 +52,7 @@ def draw(ftype, resource_data):
 	if ftype == "yaml":
 		if resource_data["rtype"] != "Cluster":
 			this.yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
-		else:
+		else: # cluster yamls are stored instead of directly queried from the api
 			if resource_data["info"] != "None":
 				info = json.loads(resource_data["info"])
 				this.yaml = info["yaml"].split('\n')
@@ -133,7 +133,7 @@ def draw_yaml(resource_data, yaml):
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 	y = 1
 	for i in range (len(yaml)):
-		y = draw_str(win, y, INDENT_AMT, yaml[i], panel_width-INDENT_AMT-1)
+		y = draw_str(win, y, INDENT_AMT, yaml[i], panel_width-INDENT_AMT)
 
 def draw_logs(resource_data, logs):
 	""" 
@@ -219,6 +219,10 @@ def draw_service(resource_data):
 
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"]]
 	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + resource_data["status"]]
+
+	if resource_data.get("application"):
+		lfields.append("Application: " + resource_data["application"])
+
 	y = iterate_info(win, left, right, lfields, rfields, width)
 
 	lefty = righty = y
@@ -252,6 +256,10 @@ def draw_work(resource_data):
 
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"]]
 	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"]]
+
+	if resource_data.get("application"):
+		lfields.append("Application: " + resource_data["application"])
+
 	if resource_data['rtype'] not in ["Deployable", "StatefulSet"]:
 		rfields.extend(["Ready: " + ready_reps, "Available: " + available, "Up-to-date: " + updated])
 	y = iterate_info(win, left, right, lfields, rfields, width)
@@ -298,6 +306,9 @@ def draw_app(resource_data):
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"]]
 	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + str(status)]
 
+	if resource_data.get("application"):
+		lfields.append("Application: " + resource_data["application"])
+
 	lefty = iterate_info(win, left, right, lfields, rfields, width)
 	righty = lefty
 
@@ -333,6 +344,9 @@ def draw_pod(resource_data):
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"], "PodIP: " + pod_ip, "Node/HostIP: " + host_ip]
 	rfields = ["Ready: " + ready, "Restarts: " + restarts, "Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + phase]
 
+	if resource_data.get("application"):
+		lfields.append("Application: " + resource_data["application"])
+		
 	lefty = iterate_info(win, left, right, lfields, rfields, width)
 	righty = lefty
 

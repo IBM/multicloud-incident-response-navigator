@@ -24,6 +24,10 @@ class ResourceFiles:
 			client = self.clients[cluster]["apps_client"]
 		elif type in ["Pod", "Service", "Event", "Namespace"]:
 			client = self.clients[cluster]["core_client"]
+		elif type == "Application":
+			doc = self.apps[name]
+		elif type == "Deployable":
+			doc = self.dpbs[name]
 		else:
 			return "Yaml not found"
 
@@ -39,10 +43,6 @@ class ResourceFiles:
 			doc = client.read_namespaced_service(name, namespace).to_dict()
 		elif type == "Pod":
 			doc =  client.read_namespaced_pod(name, namespace).to_dict()
-		elif type == "Application":
-			doc = self.apps[name]
-		elif type == "Deployable":
-			doc = self.dpbs[name]
 		elif type == "Namespace":
 			doc = client.read_namespace(name).to_dict()
 
@@ -79,11 +79,15 @@ class ResourceFiles:
 			else:
 				total_age = ""
 				age = current_age
-			if source.get("host") and source.get("component"):
-				source= source["component"] + ", " + source["host"]
-			else:
-				source = ""
-			table.append([e["type"], e["reason"], age, source, e["message"]])
+
+			source_output = ""
+			if source.get("component"):
+				source_output = source["component"]
+
+			if source.get("host"):
+				source_output += ", " + source["host"]
+
+			table.append([e["type"], e["reason"], age, source_output, e["message"]])
 			# https://stackoverflow.com/questions/34752611/tabulate-according-to-terminal-width-in-python
 		return table
 
@@ -97,8 +101,9 @@ class ResourceFiles:
 def main():
 	rf = ResourceFiles()
 	# doc = rf.get_describe("Service", "ratings", "default", "mycluster")
-	# doc = rf.get_yaml("Pod", "boisterous-shark-gbapp-frontend-8b5cc67bf-wctkb", "default","mycluster")
-	doc = rf.get_logs("mycluster", "default", "boisterous-shark-gbapp-frontend-8b5cc67bf-wctkb")
+	doc = rf.get_yaml("Deployment", "coredns-autoscaler", "kube-system","iks-extremeblue")
+	# doc = rf.get_logs("mycluster", "default", "boisterous-shark-gbapp-frontend-8b5cc67bf-wctkb")
+	# doc = rf.get_events("iks-extremeblue", "kube-system", "955624bd-a8ea-11e9-bc90-1635e13525fe")
 	print(doc)
 
 if __name__ == "__main__":

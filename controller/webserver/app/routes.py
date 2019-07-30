@@ -465,28 +465,7 @@ def get_table_by_resource(mode, uid):
 				ready, restarts, container_count  = "None", "None", "None"
 
 			# available, up-to-date, and ready replicas for both deployments and daemonsets
-			if status.get("available_replicas"):
-				available = status["available_replicas"]
-			else:
-				available = status["number_available"] if status.get("number_available") else "0"
-
-			if status.get("updated_replicas"):
-				updated = status["updated_replicas"]
-			else:
-				updated = status["updated_number_scheduled"] if status.get("updated_number_scheduled") else "0"
-
-			if status.get("ready_replicas"):
-				ready_replicas = status["ready_replicas"]
-			else:
-				ready_replicas = status["number_ready"] if status.get("number_ready") else "0"
-
-
-			if status.get("replicas"):
-				replicas = status["replicas"]
-			else:
-				replicas = status["current_number_scheduled"] if status.get("current_number_scheduled") else "0"
-
-			ready_reps = str(ready_replicas) + "/" + str(replicas)
+			available, updated, ready_replicas, replicas, ready_reps = extract_readiness(status)
 
 		else:
 			host_ip, phase, pod_ip, ready, restarts, container_count  = None, None, None, "None", "None", 0
@@ -601,3 +580,28 @@ def empty_search():
 # def redirectme():
 # 	result = redirect(url_for('view_db'))
 # 	return result
+
+def extract_readiness(status):
+	if status.get("available_replicas"):
+		available = status["available_replicas"]
+	else:
+		available = status["number_available"] if status.get("number_available") else "0"
+
+	if status.get("updated_replicas"):
+		updated = status["updated_replicas"]
+	else:
+		updated = status["updated_number_scheduled"] if status.get("updated_number_scheduled") else "0"
+
+	if status.get("ready_replicas"):
+		ready_replicas = status["ready_replicas"]
+	else:
+		ready_replicas = status["number_ready"] if status.get("number_ready") else "0"
+
+	if status.get("replicas"):
+		replicas = status["replicas"]
+	else:
+		replicas = status["current_number_scheduled"] if status.get("current_number_scheduled") else "0"
+
+	ready_reps = str(ready_replicas) + "/" + str(replicas)
+
+	return available, updated, ready_replicas, replicas, ready_reps
