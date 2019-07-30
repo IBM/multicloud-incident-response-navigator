@@ -29,6 +29,7 @@ def convert_to_base_unit(value, unit):
     :return: (int) the value in base unit
     """
     POWERS_BY_UNIT = {'n': -3,
+                        'u': -2,
                         'm': -1,
                         '': 0,
                         'K': 1, 'Ki': 1,
@@ -38,7 +39,7 @@ def convert_to_base_unit(value, unit):
                         'P': 5, 'Pi': 5,
                         'E': 6, 'Ei': 6}
 
-    if unit in ['n','m','','K','M','G','T','P','E']: # normal si system prefixes
+    if unit in ['n','u','m','','K','M','G','T','P','E']: # normal si system prefixes
         base = 1000
     else: # iec system
         base = 1024

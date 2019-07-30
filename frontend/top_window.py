@@ -15,14 +15,14 @@ import skipper_helpers as shs
 # used to reference module variables
 this = sys.modules[__name__]
 
-mode = "app"
+mode = "cluster"
 window = None		# _curses.window object that represents that top banner
 
 LEFT_PADDING = 5
 TOP_PADDING = 1
 
 
-def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
+def init_win(stdscr, height: int, width: int, y: int, x: int, has_apps: bool) -> None:
 	"""
 	Initializes the top banner window based on the given parameters.
 	Also initializes top  right window for loading icon
@@ -36,10 +36,13 @@ def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
 					Y-coordinate of upper-left corner of top window.
 				(int) x
 					X-coordiante of upper-left corner of top window.
+				(bool) has_apps
+					True if the user manages applications
 	Returns:	None
 	"""
 
 	this.window = curses.newwin(height,width, y,x)
+	this.has_apps = has_apps
 
 def init_load(mode) -> None:
 	offset = len("> " + mode + " mode ")
@@ -118,7 +121,10 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 				y += 1
 				this.window.addstr(y, x, "[esc] to exit search") # message about how to get out of query mode
 		else:
-			this.window.addstr(y, x, kb)	# y, x, str
+			if kb == '[2] app mode' and not this.has_apps:
+				this.window.addstr(y, x, kb, curses.color_pair(2))
+			else:
+				this.window.addstr(y, x, kb)	# y, x, str
 		y += 1
 
 	# calculate starting position for resource keybinds

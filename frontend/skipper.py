@@ -38,7 +38,7 @@ def run_skipper(stdscr):
 
 	# initialize and draw top window
 	height, width = stdscr.getmaxyx()
-	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0)	# height, width, y, x
+	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0, data['has_apps'])	# height, width, y, x, has_apps
 	twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 	twin.init_load(mode)
 	top_height, top_width = twin.window.getmaxyx()
@@ -59,7 +59,8 @@ def run_skipper(stdscr):
 						"path_names": data['path_names'],
 						"path_rtypes": data['path_rtypes'],
 						"path_uids": data['path_uids'],
-						"table_uids": [t_item['uid'] for t_item in data['table_items']]
+						"table_uids": [t_item['uid'] for t_item in data['table_items']],
+						"has_children": data['has_children']
 						}
 		resource_by_uid = { item['uid'] : item for item in data['table_items'] }
 		current_uid = table_data['table_uids'][table_data['row_selector']]
@@ -83,7 +84,8 @@ def run_skipper(stdscr):
 							"path_names" : [],
 							"path_rtypes" : [],
 							"path_uids" : [],
-							"table_uids" : []}
+							"table_uids" : [],
+							"has_children": []}
 				}
 
 	fmodes = { ord("y") : "yaml", ord("l") : "logs", ord("s") : "summary", ord("e") : "events"}
@@ -156,7 +158,6 @@ def run_skipper(stdscr):
 		elif c == curses.KEY_RIGHT or c == 10:
 			if panel_side == "left":
 				if table_data['mode'] in ['app', 'cluster']:
-					parent_uid = current_uid
 					# gets the children of the current resource and other relevant info
 					data = load("children", twin, current_uid, table_data["mode"])
 					if len(data['table_items']) > 0:
@@ -165,7 +166,7 @@ def run_skipper(stdscr):
 						# update and redraw
 						table_data['start_y'] = 0
 						rwin.scroll_y, rwin.scroll_x = 0, 0
-						table_data, resource_by_uid, current_uid = update(table_data["mode"], table_data, data, twin, lwin, ftype, panel_side)
+						table_data, resource_by_uid, current_uid = update(mode, table_data, data, twin, lwin, ftype, panel_side)
 
 		elif c == curses.KEY_LEFT:
 			if panel_side == "left":
@@ -181,7 +182,7 @@ def run_skipper(stdscr):
 						data = load("parent", twin, parent_uid = table_data['path_uids'][-1], mode = table_data["mode"])
 						table_data['start_y'] = start_y
 						rwin.scroll_y, rwin.scroll_x = 0, 0
-						table_data, resource_by_uid, current_uid = update(table_data["mode"], table_data, data, twin, lwin, ftype, panel_side)
+						table_data, resource_by_uid, current_uid = update(mode, table_data, data, twin, lwin, ftype, panel_side)
 
 
 def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
@@ -251,7 +252,8 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 							"path_names" : [],
 							"path_rtypes" : [],
 							"path_uids" : [],
-							"table_uids" : list(resource_by_uid.keys())}
+							"table_uids" : list(resource_by_uid.keys()),
+							"has_children": [True] * len(results)}
 			else:
 				resource_by_uid = {"empty": None}
 				current_uid  = "empty"
@@ -264,7 +266,8 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 							"path_names" : [],
 							"path_rtypes" : [],
 							"path_uids" : [],
-							"table_uids" : ["empty"]}
+							"table_uids" : ["empty"],
+							"has_children": [True]}
 
 			# draw right window
 			rwin.draw(ftype, resource_by_uid[current_uid])
@@ -295,6 +298,7 @@ def update(mode, table_data, data, twin, lwin, ftype, panel_side):
 		table_data['path_uids'] = data['path_uids']
 		table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
 		table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+		table_data["has_children"] = data['has_children']
 		resource_by_uid = {item['uid']: item for item in data['table_items']}
 	elif mode == 'anomaly':
 		# each item in data["table_items"] is (skipper_uid, type, name, reason, message)
@@ -303,6 +307,7 @@ def update(mode, table_data, data, twin, lwin, ftype, panel_side):
 		table_data['row_selector'] = 0
 		table_data['table'] = [[t_item[1], t_item[2], t_item[3]] for t_item in data['table_items']]
 		table_data["table_uids"] = [t_item[0] for t_item in data['table_items']]
+		table_data["has_children"] = [True] * len(data['table_items'])
 		resource_by_uid = {item[0]: load("sort", twin, uid=item[0]) for item in data['table_items']}
 
 	current_uid = table_data['table_uids'][table_data['row_selector']]

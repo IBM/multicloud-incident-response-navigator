@@ -23,6 +23,12 @@ def row_to_dict(row):
 		d[column.name] = str(getattr(row, column.name))
 	return d
 
+def has_children(table):
+	has_children = []
+	for t_item in table:
+		has_children.append(False if db.session.query(Edge).filter(Edge.start_uid == t_item.uid).first() is None else True)
+	return has_children
+
 @app.route('/')
 @app.route('/index')
 def index():
@@ -77,6 +83,7 @@ def start(mode):
 
 	# lazy load applications
 	apps = amb.all_applications()
+	has_apps = True if len(apps) > 0 else False
 	for app in apps:
 		app_cluster = app["metadata"]["cluster_name"]
 		app_name = app["metadata"]["name"]
@@ -140,7 +147,7 @@ def start(mode):
 		table = db.session.query(Resource).filter(Resource.rtype == "Cluster").all()
 	table_dicts = [row_to_dict(table_item) for table_item in table]
 
-	return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+	return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0, has_children=has_children(table), has_apps=has_apps)
 
 
 @app.route('/resource/<uid>', methods=['POST', 'PUT', 'GET', 'DELETE'])
@@ -232,7 +239,7 @@ def switch_app_mode(uid):
 	if uid == "empty":
 		table = db.session.query(Resource).filter(Resource.rtype == 'Application').all()
 		table_dicts = [row_to_dict(table_item) for table_item in table]
-		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0, has_children=has_children(table))
 
 	resource = db.session.query(Resource).filter_by(uid=uid).first()
 
@@ -265,7 +272,7 @@ def switch_app_mode(uid):
 	if full_path == None or full_path.split("/")[-2] == 'root': # cannot switch from the current resource, go to top of hierarchy
 		table = db.session.query(Resource).filter(Resource.rtype == 'Application').all()
 		table_dicts = [row_to_dict(table_item) for table_item in table]
-		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0, has_children=has_children(table))
 
 	# got the new path, now get the resource's siblings (aka the parent's children) and other data
 	parent = full_path.split("/")[-2]
@@ -279,7 +286,7 @@ def switch_app_mode(uid):
 			index = i
 			break
 
-	return jsonify(path_names=data['path_names'], path_rtypes=data['path_rtypes'], path_uids=data['path_uids'], table_items=siblings, index=index)
+	return jsonify(path_names=data['path_names'], path_rtypes=data['path_rtypes'], path_uids=data['path_uids'], table_items=siblings, index=index, has_children=data['has_children'])
 
 @app.route('/mode/cluster/switch/<uid>')
 def switch_cluster_mode(uid):
@@ -298,7 +305,7 @@ def switch_cluster_mode(uid):
 	if uid == "empty":
 		table = db.session.query(Resource).filter(Resource.rtype == 'Cluster').all()
 		table_dicts = [row_to_dict(table_item) for table_item in table]
-		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0, has_children=has_children(table))
 
 	resource = db.session.query(Resource).filter_by(uid=uid).first()
 
@@ -332,7 +339,7 @@ def switch_cluster_mode(uid):
 	if full_path == None or full_path.split("/")[-2] == 'root': # cannot switch from the current resource, go to top of hierarchy
 		table = db.session.query(Resource).filter(Resource.rtype == 'Cluster').all()
 		table_dicts = [row_to_dict(table_item) for table_item in table]
-		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0)
+		return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0, has_children=has_children(table))
 
 	parent = full_path.split("/")[-2]
 
@@ -345,7 +352,7 @@ def switch_cluster_mode(uid):
 			index = i
 			break
 
-	return jsonify(path_names=data['path_names'], path_rtypes=data['path_rtypes'], path_uids=data['path_uids'], table_items=siblings, index=index)
+	return jsonify(path_names=data['path_names'], path_rtypes=data['path_rtypes'], path_uids=data['path_uids'], table_items=siblings, index=index, has_children=data['has_children'])
 
 @app.route('/mode/<mode>/<uid>')
 def get_table_by_resource(mode, uid):
@@ -509,7 +516,7 @@ def get_table_by_resource(mode, uid):
 		path_names.append(db.session.query(Resource.name).filter(Resource.uid == res_uid).first()[0])
 		path_rtypes.append(db.session.query(Resource.rtype).filter(Resource.uid == res_uid).first()[0])
 
-	return jsonify(path_names=path_names, path_rtypes=path_rtypes, path_uids=path_uids, table_items=[row_to_dict(t_item) for t_item in table_items], index=0)
+	return jsonify(path_names=path_names, path_rtypes=path_rtypes, path_uids=path_uids, table_items=[row_to_dict(t_item) for t_item in table_items], index=0, has_children=has_children(table_items))
 
 @app.route('/errors')
 def get_errors():

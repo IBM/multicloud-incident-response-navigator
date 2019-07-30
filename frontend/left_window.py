@@ -40,6 +40,7 @@ col_names = []			# column header names
 col_widths = []			# width of each column
 table = []				# rows of data to be displayed in table window (curses.pad)
 table_uids = []			# uids for each resource in the table
+has_children = []		# boolean (has children or not) for each resource in table
 row_selector = 0		# which row of the table should be highlighted
 
 bc_height = 4			# height of the breadcrumbs window
@@ -102,7 +103,8 @@ def set_contents(mode: str,
 					path_names: List[str],
 					path_rtypes: List[str],
 				 	path_uids: List[str],
-				 	table_uids: List[str]) -> None:
+				 	table_uids: List[str],
+				 	has_children: List[bool]) -> None:
 	"""
 	Sets relevant content variables based on given arguments.
 
@@ -115,6 +117,8 @@ def set_contents(mode: str,
 					Rows of information to display in the table.
 				(int) row_selector
 					Index of which row should be highlighted.
+				(int) start_y
+					Starting row of table pad
 				(List[str]) path_names
 					For app and cluster mode.
 					List of resource names to display in breadcrumb window.
@@ -126,6 +130,8 @@ def set_contents(mode: str,
 					List of resource uids corresponding to the above resource names.
 				(List[str]) table_uids
 					List of uids for resources in table
+				(List[bool]) has_children
+					List of booleans for knowing if resource has children
 	Returns: 	None
 	"""
 
@@ -140,6 +146,7 @@ def set_contents(mode: str,
 	this.path_rtypes = path_rtypes
 	this.path_uids = path_uids
 	this.table_uids = table_uids
+	this.has_children = has_children
 
 	if mode in ["app", "cluster"]:
 		this.thx, this.thy = 0,this.bc_height	# relative x,y inside left_window
@@ -212,7 +219,7 @@ def draw_bc_window(bc_window) -> None:
 	bc_window.addstr(2, this.LEFT_PADDING, type_str)
 
 
-def draw_tr_window(tr_window, row: List[str]) -> None:
+def draw_tr_window(tr_window, row: List[str], grey_out=False) -> None:
 	"""
 	Formats and draws row in the given window.
 
@@ -241,7 +248,10 @@ def draw_tr_window(tr_window, row: List[str]) -> None:
 		row_str += fmt_str(entry, width)
 
 	# draw the string inside the table row window
-	tr_window.addstr(1, this.LEFT_PADDING, row_str)
+	if curses.can_change_color() and grey_out:
+		tr_window.addstr(1, this.LEFT_PADDING, row_str, curses.color_pair(2))
+	else:
+		tr_window.addstr(1, this.LEFT_PADDING, row_str)
 
 
 def draw_table_window(table_window) -> None:
@@ -262,13 +272,13 @@ def draw_table_window(table_window) -> None:
 		yloc += this.tr_height
 
 	# Draw the row windows
-	for entries, rowwin in row_windows:
-		draw_tr_window(rowwin, entries)
+	for i, (entries, rowwin) in enumerate(row_windows):
+		draw_tr_window(rowwin, entries, grey_out=not this.has_children[i])
 
 	# Highlight the row at index this.row_selector
 	# if there are any rows
 	if len(table) > 0:
-		chs.highlight_window(row_windows[this.row_selector][1])
+		chs.highlight_window(row_windows[this.row_selector][1], grey=not this.has_children[this.row_selector])
 
 
 def draw() -> None:

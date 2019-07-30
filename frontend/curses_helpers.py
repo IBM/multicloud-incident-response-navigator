@@ -15,9 +15,16 @@ def initialize_curses():
 	"""
 
 	stdscr = curses.initscr()
+
 	curses.start_color()
 	curses.use_default_colors()
 	curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
+	if curses.can_change_color() == 1:
+		curses.init_color(240,500,500,500)
+		curses.init_pair(2, 240, -1)
+		curses.init_color(255, 0, 0, 0)
+		curses.init_pair(3, 255, 240)
+
 	curses.noecho()
 	curses.cbreak()
 	stdscr.keypad(True)
@@ -43,14 +50,17 @@ def print_center(stdscr, text_lines: List[str]) -> None:
 	stdscr.refresh()
 
 
-def highlight_window(window) -> None:
+def highlight_window(window, grey=False) -> None:
 	"""
 	Makes the given window's background white and text black.
 
 	Arguments:	(_curses.window) window
 	Returns:	None
 	"""
-	window.bkgd(" ", curses.color_pair(1))
+	if not grey:
+		window.bkgd(" ", curses.A_STANDOUT)
+	else:
+		window.bkgd(" ", curses.color_pair(3))
 
 
 def bottom_border(window) -> None:
