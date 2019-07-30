@@ -3,13 +3,14 @@ from app.models import Resource, Edge
 from flask import request, jsonify, redirect, url_for
 import sys, requests, datetime, inspect, json
 from dateutil.parser import parse
-import sqlalchemy
+import sqlalchemy, yaml
 
 
 sys.path.insert(0,'../../backend')
 # sys.path.insert(0,'../crawler')
 import resource_files, errors_backend, metrics
-import apps, clients_resources, k8s_config, cluster_mode_backend as cmb, app_mode_backend as amb
+import apps, clients_resources, k8s_config
+import cluster_mode_backend as cmb, app_mode_backend as amb
 
 
 # loads the user's kube-config
@@ -60,9 +61,25 @@ def start(mode):
 	k8s_config.update_available_clusters()
 
 	# lazy load clusters
-	clusters = k8s_config.all_cluster_names()
-	for cluster in clusters:
-		resource_data = {'uid': cluster, "rtype": 'Cluster', "name": cluster, "cluster": cluster,
+	all_clusters = k8s_config.all_cluster_names()
+	mcm_clusters = cmb.mcm_clusters(all_clusters)
+	for cluster in all_clusters:
+		if cluster in mcm_clusters:
+			local_cluster = cluster
+			cluster = mcm_clusters[cluster]
+			created_at = cluster["metadata"].get("creationTimestamp")
+			labels = cluster["metadata"]["labels"] if cluster["metadata"].get("labels") else "None"
+			status = cluster["status"] if cluster.get("status") else "None"
+			remote_name = cluster["metadata"]["name"] if cluster["metadata"].get("name") else "None"
+			remote_namespace = cluster["metadata"]["namespace"] if cluster["metadata"].get("namespace") else "None"
+			uid = cluster["metadata"]["uid"] if cluster["metadata"].get("uid") else "None"
+			yml = yaml.dump(cluster, sort_keys=False)
+			info =  { "labels" : labels, "status": status,  "remote_name": remote_name, "remote_namespace": remote_namespace, "k8s_uid" : uid, "yaml" : yml}
+			resource_data = {'uid': local_cluster, "rtype": 'Cluster', "name": local_cluster , "cluster": local_cluster ,
+						 "cluster_path": "/root/", "created_at" : created_at, "info" : json.dumps(info)}
+			cluster = local_cluster
+		else:
+			resource_data = {'uid': cluster, "rtype": 'Cluster', "name": cluster, "cluster": cluster,
 						 "cluster_path": "/root/"}
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(cluster), data=resource_data)
 		edge_data = {'start_uid': 'root', 'end_uid': cluster, 'relation': "Root<-Cluster"}
@@ -74,9 +91,11 @@ def start(mode):
 			ns = ns.to_dict()
 			skipper_uid = cluster + "_" + ns["metadata"]["name"]
 			labels = ns["metadata"]["labels"] if ns["metadata"].get("labels") else "None"
+			info = { "k8s_uid" : ns["metadata"]["uid"], "labels" : labels, "status" : ns["status"]["phase"]}
+			created_at = ns["metadata"]["creationTimestamp"] if ns["metadata"].get("creationTimestamp") else ns["metadata"]["creation_timestamp"]
 			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"],
 							 "cluster": cluster, "namespace": ns["metadata"]["name"],
-							 "cluster_path": "/root/{}/".format(cluster), "info" : json.dumps({ "labels" : labels, "status" : ns["status"]["phase"]} )}
+							 "cluster_path": "/root/{}/".format(cluster), "info": json.dumps(info)}
 			requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 			edge_data = {'start_uid': cluster, 'end_uid': skipper_uid, 'relation': "Cluster<-Namespace"}
 			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(cluster, skipper_uid), data=edge_data)
@@ -379,10 +398,9 @@ def get_table_by_resource(mode, uid):
 		for ns in namespaces:
 			ns = ns.to_dict()
 			skipper_uid = resource.cluster + "_" + ns["metadata"]["name"]
-			info = { "k8s_uid" : ns["metadata"]["uid"]}
-			created_at = ns["metadata"].get("creationTimestamp")
-			if not created_at:
-				created_at = ns["metadata"]["creation_timestamp"]
+			labels = ns["metadata"]["labels"] if ns["metadata"].get("labels") else "None"
+			info = { "k8s_uid" : ns["metadata"]["uid"], "labels" : labels, "status" : ns["status"]["phase"]}
+			created_at =  ns["metadata"]["creationTimestamp"] if ns["metadata"].get("creationTimestamp") else ns["metadata"]["creation_timestamp"]
 			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"], \
 							"cluster": resource.cluster, "namespace": ns["metadata"]["name"], "created_at" : created_at, \
 							"cluster_path": resource.cluster_path + resource.uid + "/", "info": json.dumps(info)}

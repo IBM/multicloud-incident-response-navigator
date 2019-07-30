@@ -1,9 +1,8 @@
 from typing import List, Dict
-import json
+import k8s_api, k8s_config, requests, json
 import kubernetes as k8s
 from kubernetes import client, config
-import k8s_api
-
+from kubernetes.client.rest import ApiException
 # Note: call k8s_config.update_available_clusters() before use!
 
 V1Namespace = k8s.client.models.v1_namespace.V1Namespace
@@ -14,6 +13,62 @@ V1DaemonSet = k8s.client.models.v1_daemon_set.V1DaemonSet
 V1Pod = k8s.client.models.v1_pod.V1Pod
 V1Container = k8s.client.models.v1_container.V1Container
 
+def mcm_clusters(cluster_names):
+	myconfig = client.Configuration()
+	remotes  = {} # cluster_name : [ remote addresse(s) ]
+	locals = {} # cluster_name : local cluster server
+	cluster_objects =  {}  # [ uids : cluster object ]
+	remotes_by_uids = {} # cluster uid : [ remote addresses ]
+	for cluster in cluster_names:
+	    # looping through clusters
+	    desired_context = k8s_config.context_for_cluster(cluster)
+	    config.load_kube_config(context=desired_context, client_configuration=myconfig)
+
+	    host = myconfig.host
+	    token = myconfig.api_key
+	    locals[cluster] = host
+	    # getting local address for cluster
+
+	    response = requests.get(host+'/api', headers=token, verify=False)
+
+	    if response.status_code  == 200:
+	        remotes[cluster] = []
+	        for server in response.json()["serverAddressByClientCIDRs"]:
+	            address = server["serverAddress"]
+	            remotes[cluster].append(address)
+	            # getting remote addresses for cluster
+	        # print(cluster, remotes[cluster])
+	        api_client = k8s_api.api_client(cluster, "CustomObjectsApi")
+	        try:
+	            clusters = api_client.list_cluster_custom_object(
+	    			group = "clusterregistry.k8s.io",
+	    			version = "v1alpha1",
+	    			plural = "clusters")["items"]
+	            # listing all remote clusters accessible from the current cluster
+	            for item in clusters:
+	                uid = item['metadata']['uid']
+	                cluster_objects [uid] = item
+	                remote_addresses  = []
+	                for ep in item['spec']['kubernetesApiEndpoints']['serverEndpoints']:
+	                    remote_addresses.append(ep['serverAddress'])
+
+	                remotes_by_uids[uid] = remote_addresses
+	            # print(pprint.pprint(clusters))
+	        except ApiException as e:
+	            pass
+
+	clusters = {} # { local cluster name : cluster object }
+	# matching clusters to remote using addresses
+	for uid in remotes_by_uids: # iterating through remote clusters
+	    for cluster in remotes: # iterating through local clusters' remote addresses
+        	local = [locals[cluster].replace('https://', '')]
+	        if sorted(remotes[cluster]) == sorted(remotes_by_uids[uid]):
+	            # when remote address is contained in cluster object
+	            clusters[cluster] =  cluster_objects[uid]
+	        elif local == remotes_by_uids[uid]:
+	            # when local host and server from the remote object matches
+	            clusters[cluster] =  cluster_objects[uid]
+	return clusters
 
 def cluster_namespaces(cluster_name: str) -> List[V1Namespace]:
 	api_client = k8s_api.api_client(cluster_name, "CoreV1Api")

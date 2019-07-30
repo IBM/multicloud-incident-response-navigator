@@ -1,4 +1,4 @@
-import curses, requests, datetime, pytz, json, sys, math
+import curses, requests, datetime, json, sys, math
 from dateutil.parser import parse
 import tabulate
 tabulate.PRESERVE_WHITESPACE = True
@@ -50,7 +50,14 @@ def draw(ftype, resource_data):
 	file_types = { "yaml" : "Yaml: "+ this.rname, "summary" :  this.rtype + ": " + this.rname, "logs" : "Logs: "+ this.rname, "events" : "Events: "+ this.rname}
 
 	if ftype == "yaml":
-		this.yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
+		if resource_data["rtype"] != "Cluster":
+			this.yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
+		else:
+			if resource_data["info"] != "None":
+				info = json.loads(resource_data["info"])
+				this.yaml = info["yaml"].split('\n')
+			else:
+				this.yaml = ["Yaml not found"]
 		this.doc_height = max(this.panel_height, calc_height(this.yaml, this.panel_width-INDENT_AMT) + 3)
 		this.doc_width = this.panel_width
 		draw_pad(this.doc_height, this.doc_width)
@@ -108,7 +115,9 @@ def draw(ftype, resource_data):
 	elif ftype == "summary":
 		this.doc_height = this.panel_height
 		draw_summary(resource_data)
-	# INDENT_AMT+1 is to match the alignment
+	"""
+	INDENT_AMT+1 is to match the alignment of top (name) banner
+	"""
 	this.background_win.addstr(1, INDENT_AMT+1, file_types[ftype], curses.A_BOLD)
 	this.background_win.border(curses.ACS_VLINE, " ", " ", " ", curses.ACS_VLINE, " ", " ", " ")
 	this.background_win.refresh()
@@ -122,13 +131,9 @@ def draw_yaml(resource_data, yaml):
 	:return:
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
-
-	if resource_data["rtype"] not in ["Cluster"]:
-		y = 1
-		for i in range (len(yaml)):
-			y = draw_str(win, y, INDENT_AMT, yaml[i], panel_width-INDENT_AMT-1)
-	else:
-		win.addstr(1, INDENT_AMT, "Yaml not found")
+	y = 1
+	for i in range (len(yaml)):
+		y = draw_str(win, y, INDENT_AMT, yaml[i], panel_width-INDENT_AMT-1)
 
 def draw_logs(resource_data, logs):
 	""" 
@@ -184,13 +189,10 @@ def draw_summary(resource_data):
 	if rtype == "Application":
 		y = draw_app(resource_data)
 	elif rtype == "Cluster":
-		resource_data["status"] = ""
 		y = draw_cluster(resource_data)
 	elif rtype == "Namespace":
-		resource_data["status"] = ""
 		y = draw_ns(resource_data)
 	elif rtype in ["Deployment", "Deployable", "StatefulSet", "ReplicaSet", "DaemonSet"]:
-		resource_data["status"] = ""
 		y = draw_work(resource_data)
 	elif rtype == "Pod":
 		y = draw_pod(resource_data)
@@ -269,13 +271,13 @@ def draw_ns(resource_data):
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
-		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
+		status = info["status"] if info.get("status") and (info.get("status") != "None") else "None"
 		k8s_uid = info["k8s_uid"] if info.get("k8s_uid") and (info.get("k8s_uid") != "None") else "None"
 	else:
-		status = None
+		status = "None"
 
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + k8s_uid]
-	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + str(status)]
+	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + status]
 
 	return iterate_info(win, left, right, lfields, rfields, width)
 
@@ -374,14 +376,31 @@ def draw_cluster(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
-	lines = [ "Welcome to Skipper, a cross-cluster terminal application", \
-			  "We will be loading in more info about your cluster in the future", \
-			  "But for now please scroll and arrow right to view more resources"
-				]
-	lefty = 1
-	for line in lines:
-		lefty = draw_str(win, lefty, INDENT_AMT, line, width)+1
-	return lefty
+	if resource_data["info"] != "None":
+		info = json.loads(resource_data["info"])
+		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
+		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
+		remote_name = info["remote_name"]
+		remote_namespace = info["remote_namespace"]
+		k8s_uid = info["k8s_uid"]
+
+		lfields = ["Local Cluster Name: " + resource_data["cluster"], "UID: " + k8s_uid, "Remote Cluster Name: " + remote_name, "Namespace on Hub: " + remote_namespace]
+		rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"] ]
+		lefty = righty = iterate_info(win, left, right, lfields, rfields, width)
+
+		if labels is not None:
+			lefty = draw_pairs(left, lefty, "Labels:", width//2-INDENT_AMT, labels)
+		if status is not None:
+			righty = draw_pairs(right, righty, "Conditions:", width//2-2*INDENT_AMT, status['conditions'][0])
+	else:
+		lines = [ "Welcome to Skipper, a cross-cluster terminal application", \
+				  "Looks like the cluster \"" + this.rname + "\" is not an MCM cluster", \
+				  "More info about your cluster can be loaded when using IBM's Multicloud Manager"
+					]
+		righty = lefty = 1
+		for line in lines:
+			lefty = draw_str(win, lefty, INDENT_AMT, line, width-2*INDENT_AMT)+1
+	return max(lefty, righty)
 
 def calc_age(time):
 	"""
