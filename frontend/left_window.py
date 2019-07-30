@@ -43,7 +43,7 @@ table_uids = []			# uids for each resource in the table
 row_selector = 0		# which row of the table should be highlighted
 
 bc_height = 4			# height of the breadcrumbs window
-sb_height = 3			# height of the search bar window
+sb_height = 7			# height of the search bar window
 th_height = 3			# height of the table headers window
 tr_height = 3			# height of a table row window
 table_height = 0		# height of the table window

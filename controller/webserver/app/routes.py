@@ -88,7 +88,7 @@ def start(mode):
 		info = { "labels" : labels, "status" : status, \
 				 "deployables" : app["metadata"]["annotations"]['apps.ibm.com/deployables']}
 
-		data = {'uid': app_uid, "created_at": app["metadata"].get("creationTimestamp"), "rtype": "Application",
+		data = {"application": app_name, 'uid': app_uid, "created_at": app["metadata"].get("creationTimestamp"), "rtype": "Application",
 				"name": app_name, "cluster": app_cluster, "namespace": app_ns, "app_path": "/root/", "info" : json.dumps(info)}
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(app_uid), data=data)
 		edge_data = {'start_uid': 'root', 'end_uid': app_uid, 'relation': "Root<-Application"}
@@ -105,7 +105,7 @@ def start(mode):
 			info = { "labels" : labels, "status" : app["status"]}
 			if not created_at:
 				created_at = dpb["metadata"]["creation_timestamp"]
-			resource_data = {'uid': dpb_uid, "created_at": created_at, "rtype": "Deployable",
+			resource_data = {"application": app_name, 'uid': dpb_uid, "created_at": created_at, "rtype": "Deployable",
 							 "name": dpb["metadata"]["name"], "cluster": cluster, "namespace": namespace,
 							 "app_path": "/root/{}/".format(app_uid), "info" : json.dumps(info)}
 			requests.post('http://127.0.0.1:5000/resource/{}'.format(dpb_uid), data=resource_data)
@@ -484,6 +484,7 @@ def get_table_by_resource(mode, uid):
 		# update paths
 		if resource.app_path != None:
 			resource_data['app_path'] = resource.app_path + resource.uid + "/"
+			resource_data['application'] = resource.application
 		if resource.cluster_path != None:
 			resource_data['cluster_path'] = resource.cluster_path + resource.uid + "/"
 
@@ -498,7 +499,6 @@ def get_table_by_resource(mode, uid):
 		full_path = resource.app_path
 	elif mode == 'cluster':
 		full_path = resource.cluster_path
-	print("HIIII", resource.name)
 	full_path += "{}/".format(resource.uid)
 
 	# convert path using uids to breadcrumbs of resource names and types
@@ -539,8 +539,31 @@ def search(query: str):
 	"""
 	Searches over all resource names and returns the results as json.
 	"""
-	results = db.session.query(Resource).filter(Resource.name.ilike("%" + query + "%"))
-	return jsonify(results=[ row_to_dict(r) for r in results ])
+	if query.isspace():
+		return jsonify(results=[])
+
+	query_list = query.split(" ")
+	results = db.session.query(Resource)
+
+	# for each component of query, filter as needed
+	for query_part in query_list:
+		if ':' in query_part:
+			field = query_part.split(':')[0].lower()
+			value = ":".join(query_part.split(':')[1:])
+			if field == 'app':
+				results = results.filter(Resource.application.ilike(value))
+			elif field == 'kind':
+				results = results.filter(Resource.rtype.ilike(value))
+			elif field == 'cluster':
+				results = results.filter(Resource.cluster.ilike(value))
+			elif field == 'ns':
+				results = results.filter(Resource.namespace.ilike(value))
+			else:
+				results = results.filter(Resource.name.ilike("%" + query_part + "%"))
+		else: # regular fuzzy search
+			results = results.filter(Resource.name.ilike("%" + query_part + "%"))
+
+	return jsonify(results=[row_to_dict(r) for r in results])
 
 @app.route('/search/')
 def empty_search():
