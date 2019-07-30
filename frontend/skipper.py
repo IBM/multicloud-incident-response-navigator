@@ -40,6 +40,7 @@ def run_skipper(stdscr):
 	height, width = stdscr.getmaxyx()
 	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0)	# height, width, y, x
 	twin.draw(mode=mode, ftype=ftype, panel=panel_side)
+	twin.init_load(mode)
 	top_height, top_width = twin.window.getmaxyx()
 	panel_height = height-top_height
 	panel_width = width//2
@@ -70,6 +71,7 @@ def run_skipper(stdscr):
 	# state that needs to be tracked
 	c = 0
 	ltable = []				# stack to keep track of table_start_y and row selector positions
+	last_mode = START_MODE	# keeps track of last mode the user was in
 	query_state = {"resource_by_uid": {"empty": None},	# stores last known state for query mode
 					"current_uid": "empty",				# so that it can be restored when user re-enters query mode
 					"table_data": {"mode": "query",
@@ -84,35 +86,28 @@ def run_skipper(stdscr):
 							"table_uids" : []}
 				}
 
-	modes = { ord("y") : "yaml", ord("l") : "logs", ord("s") : "summary", ord("e") : "events"}
+	fmodes = { ord("y") : "yaml", ord("l") : "logs", ord("s") : "summary", ord("e") : "events"}
+	modes = { ord("1") : "cluster", ord("2") : "app", ord("3") : "anomaly"}
 	# start listening for keystrokes, and act accordingly
 	while c != ord('q'):
 		c = stdscr.getch()
+		if c in modes:
+			mode = modes[c]
+			data = load(mode, twin, current_uid)
+			if len(data['table_items']) > 0:
+				table_data, resource_by_uid, current_uid = update(mode, table_data, data, twin, lwin, ftype, panel_side)
 
-		if c == ord('1'):		# cluster mode
-			data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/{}'.format(current_uid)).json()
-			if len(data['table_items']) > 0:
-				table_data, resource_by_uid, current_uid = update("cluster", table_data, data, twin, lwin, ftype, panel_side)
-			mode = "cluster"
-		elif c == ord('2'):		# app mode
-			data = requests.get('http://127.0.0.1:5000/mode/app/switch/{}'.format(current_uid)).json()
-			if len(data['table_items']) > 0:
-				table_data, resource_by_uid, current_uid = update("app", table_data, data, twin, lwin, ftype, panel_side)
-			mode = "app"
-		elif c == ord('3'):		# anomaly mode
-			data = requests.get('http://127.0.0.1:5000/errors').json()
-			if len(data["table_items"]) > 0:
-				table_data, resource_by_uid, current_uid = update("anomaly", table_data, data, twin, lwin, ftype, panel_side)
-			mode = "anomaly"
 		elif c == ord('4'):		# query mode
 			mode = "query"
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
+			twin.init_load(mode)
 			table_data["mode"] = mode
 
 			# draw right before left so that cursor shows up in search bar
 			rwin.draw(ftype, query_state['resource_by_uid'][query_state['current_uid']])
 
 			# draw the left window
+			last_mode = "query"
 			lwin.set_contents(**query_state['table_data'])
 			lwin.draw()
 
@@ -124,8 +119,8 @@ def run_skipper(stdscr):
 			query_state["current_uid"] = copy.copy(current_uid)
 			query_state["table_data"] = copy.deepcopy(table_data)
 
-		elif c in modes.keys():
-			ftype = modes[c]
+		elif c in fmodes.keys():
+			ftype = fmodes[c]
 			rwin.scroll_y = 0
 			rwin.draw(ftype, resource_by_uid[current_uid])
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
@@ -163,7 +158,7 @@ def run_skipper(stdscr):
 				if table_data['mode'] in ['app', 'cluster']:
 					parent_uid = current_uid
 					# gets the children of the current resource and other relevant info
-					data = requests.get('http://127.0.0.1:5000/mode/{}/{}'.format(table_data["mode"],current_uid)).json()
+					data = load("children", twin, current_uid, table_data["mode"])
 					if len(data['table_items']) > 0:
 						# save row selector and start_y for table
 						ltable.append( lwin.table_start_y )
@@ -180,11 +175,10 @@ def run_skipper(stdscr):
 					if len(ltable) != 0:
 						start_y = ltable.pop()
 
-					current_resource = requests.get('http://127.0.0.1:5000/resource/{}'.format(current_uid)).json()['data']
+					current_resource = load("current", twin, current_uid)
 					if current_resource['rtype'] not in ['Application', 'Cluster']:
 						# gets the siblings of the parent resource (including parent) and other relevant info
-						parent_uid = table_data['path_uids'][-1]
-						data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(table_data["mode"], parent_uid)).json()
+						data = load("parent", twin, parent_uid = table_data['path_uids'][-1], mode = table_data["mode"])
 						table_data['start_y'] = start_y
 						rwin.scroll_y, rwin.scroll_x = 0, 0
 						table_data, resource_by_uid, current_uid = update(table_data["mode"], table_data, data, twin, lwin, ftype, panel_side)
@@ -224,15 +218,15 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 			curses.curs_set(1)
 			sb.move_right()
 		elif c == 258:	# down arrow
-			curses.curs_set(0)
 			current_uid = lwin.move_down()
 			table_data['row_selector'] = lwin.row_selector
 			rwin.draw(ftype, resource_by_uid[current_uid])
+			sb.show_cursor()
 		elif c == 259:	# up arrow
-			curses.curs_set(0)
 			current_uid = lwin.move_up()
 			table_data['row_selector'] = lwin.row_selector
 			rwin.draw(ftype, resource_by_uid[current_uid])
+			sb.show_cursor()
 		elif c == 1:	# ctrl-a
 			curses.curs_set(1)
 			sb.move_to_start()
@@ -241,8 +235,7 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 			sb.move_to_end()
 		elif c == 10:	# enter
 			curses.curs_set(1)
-			query = sb.get_query()
-			results = requests.get("http://127.0.0.1:5000/search/" + query).json()["results"]
+			results = load("query", twin, query = sb.get_query())
 			rows = [ [r["rtype"], r["name"]] for r in results ]
 
 			# create dict that right window needs
@@ -310,14 +303,36 @@ def update(mode, table_data, data, twin, lwin, ftype, panel_side):
 		table_data['row_selector'] = 0
 		table_data['table'] = [[t_item[1], t_item[2], t_item[3]] for t_item in data['table_items']]
 		table_data["table_uids"] = [t_item[0] for t_item in data['table_items']]
-		resource_by_uid = {item[0]: requests.get('http://127.0.0.1:5000/resource/{}'.format(item[0])).json()['data'] for item in data['table_items']}
+		resource_by_uid = {item[0]: load("sort", twin, uid=item[0]) for item in data['table_items']}
 
 	current_uid = table_data['table_uids'][table_data['row_selector']]
 	twin.draw(mode=mode, ftype=ftype, panel=panel_side)
+	twin.init_load(mode)
 	lwin.set_contents(*table_data.values())
 	lwin.draw()
 	rwin.draw(ftype, resource_by_uid[current_uid])
 	return table_data, resource_by_uid, current_uid
+
+def load(request_type, twin, current_uid = None, mode = None, parent_uid =  None, query = None, uid  = None):
+	twin.start_loading()
+	if request_type == "cluster":
+		data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/{}'.format(current_uid)).json()
+	elif request_type == "app":
+		data = requests.get('http://127.0.0.1:5000/mode/app/switch/{}'.format(current_uid)).json()
+	elif request_type == "anomaly":
+		data = requests.get('http://127.0.0.1:5000/errors').json()
+	elif request_type == "children":
+		data = requests.get('http://127.0.0.1:5000/mode/{}/{}'.format(mode, current_uid)).json()
+	elif request_type == "current":
+		data = requests.get('http://127.0.0.1:5000/resource/{}'.format(current_uid)).json()['data']
+	elif request_type == "parent":
+		data = requests.get('http://127.0.0.1:5000/mode/{}/switch/{}'.format(mode, parent_uid)).json()
+	elif request_type == "query":
+		data = requests.get("http://127.0.0.1:5000/search/" + query).json()["results"]
+	elif request_type == "sort":
+		data = requests.get('http://127.0.0.1:5000/resource/{}'.format(uid)).json()['data']
+	twin.stop_loading()
+	return data
 
 def main():
 	curses.wrapper(run_skipper)

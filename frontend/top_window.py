@@ -6,8 +6,8 @@ window__________________________________
 |_______________________________________|
 """
 
-import curses
-import sys
+import curses, emojis
+import sys, time
 import curses_helpers as chs
 import skipper_helpers as shs
 
@@ -25,6 +25,7 @@ TOP_PADDING = 1
 def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
 	"""
 	Initializes the top banner window based on the given parameters.
+	Also initializes top  right window for loading icon
 
 	Arguments:	(_curses.window) stdscr
 				(int) height
@@ -40,6 +41,9 @@ def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
 
 	this.window = curses.newwin(height,width, y,x)
 
+def init_load(mode) -> None:
+	offset = len("> " + mode + " mode ")
+	this.loading_icon_win = curses.newwin(2, 2, this.loading_y, this.loading_x + offset)
 
 def draw(mode: str, ftype : str, panel : str) -> None:
 	"""
@@ -56,7 +60,6 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 					 'left' : '[shift+l] left pane',
 					 'right' : '[shift+r] right pane',
 					 'quit' : '[q] quit'
-					 # according to vi HJKL commands, H = left, J = down, K = up, L = right
 	}
 
 	mode_keybinds = {'cluster' : '[1] cluster mode',
@@ -64,6 +67,7 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 					'anomaly' : '[3] anomaly mode',
 					'query' : '[4] query mode'
 					}
+
 	resource_keybinds = {'summary' : '[s] summary',
 					'yaml' : '[y] yaml',
 					'logs' : '[l] logs',
@@ -78,6 +82,8 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 	for line in skipper_figlet_lines:
 		this.window.addstr(y, x, line)	# y, x, str
 		y += 1
+	this.loading_y = y
+	this.loading_x = x
 
 	# write the current mode under the figlet
 	if mode in ["app", "cluster", "query", "anomaly"]:
@@ -85,6 +91,7 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 	else:
 		print("No valid mode could be found with name", mode + ".")
 		return
+
 
 	# calculate starting position for nav keybinds
 	keybinds_x = max(len(line) for line in skipper_figlet_lines) + this.LEFT_PADDING * 4
@@ -101,7 +108,7 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 		y += 1
 
 	# draw mode keybinds
-	# if mode drawn matches current mode, highlight it (currently bolds)
+	# if mode drawn matches current mode, highlight it (stand out markup)
 	y = keybinds_y
 	x += max(len(kb) for kb in nav_keybinds.values()) + this.LEFT_PADDING
 	for kb in mode_keybinds.values():
@@ -129,5 +136,19 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 		else:
 			this.window.addstr(y, x, kb)	# y, x, str
 		y += 1
-
 	this.window.refresh()
+
+def load(sec : int) -> None:
+	this.start_loading()
+	time.sleep(sec)
+	this.stop_loading()
+
+def start_loading() -> None:
+	this.loading_icon_win.erase()
+	# refer to cheatsheet for more emojis https://www.webfx.com/tools/emoji-cheat-sheet/
+	this.loading_icon_win.addstr(0, 0, emojis.encode(':hourglass:'), curses.A_BLINK)
+	this.loading_icon_win.refresh()
+
+def stop_loading() -> None:
+	this.loading_icon_win.erase()
+	this.loading_icon_win.refresh()
