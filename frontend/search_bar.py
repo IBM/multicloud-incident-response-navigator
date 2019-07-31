@@ -3,6 +3,7 @@ Module that holds the logic for the query mode search bar.
 """
 
 import sys
+import curses
 
 this = sys.modules[__name__]	# used to reference module variables
 
@@ -35,19 +36,17 @@ def draw() -> None:
 	"""
 	Draws the search bar, shows the outstanding query, moves the cursor to end of query.
 	"""
-	this.instruction_window = this.window.derwin(4, this.width, 0, 0)
-	this.instruction_window.addstr(0, LEFT_PADDING, "Filter by application/cluster/namespace:\tEx: \"app:bookinfo\", \"cluster:iks\", \"ns:default\"")
-	this.instruction_window.addstr(1, LEFT_PADDING, "Filter by resource kind:\t\t\tEx: \"kind:pod\"")
-	this.instruction_window.addstr(2, LEFT_PADDING, "Search by keyword:\t\t\t\tEx: \"redis\"")
-	this.instruction_window.addstr(3, LEFT_PADDING, "All together:\t\t\t\tEx: \"app:bookinfo kind:pod cluster:iks redis\"")
+	this.instruction_window = this.window.derwin(1, this.width, 0, 0)
+	this.instruction_window.addstr(0, LEFT_PADDING, "Sample query: \"app:bookinfo kind:pod cluster:iks ns:default redis\"")
+	escape_instruction = "[esc] to exit search bar"
+	this.instruction_window.addstr(0, this.width - len(escape_instruction) - 1, escape_instruction)
 	this.instruction_window.refresh()
 
-	this.bar_window = this.window.derwin(3, this.width, 4, 0)
+	this.bar_window = this.window.derwin(3, this.width, 1, 0)
 	this.bar_window.box()
 	this.bar_window.addstr(1, LEFT_PADDING, "".join(this.query_chars))
 	this.bar_window.move(1, LEFT_PADDING + len(this.query_chars))
 	this.bar_window.refresh()
-
 
 def get_query() -> str:
 	"""

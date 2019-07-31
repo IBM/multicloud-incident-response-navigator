@@ -8,7 +8,6 @@ window__________________________________
 
 import curses, emojis
 import sys, time
-import curses_helpers as chs
 import skipper_helpers as shs
 
 
@@ -59,8 +58,7 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 
 	this.window.erase()
 
-	nav_keybinds = { 'esc' : '[esc] command mode',
-					 'left' : '[shift+l] left pane',
+	nav_keybinds = { 'left' : '[shift+l] left pane',
 					 'right' : '[shift+r] right pane',
 					 'quit' : '[q] quit'
 	}
@@ -117,9 +115,6 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 	for kb in mode_keybinds.values():
 		if mode_keybinds[mode] == kb:
 			this.window.addstr(y, x, kb, curses.A_STANDOUT)	# y, x, str
-			if mode == "query":
-				y += 1
-				this.window.addstr(y, x, "[esc] to exit search") # message about how to get out of query mode
 		else:
 			if kb == '[2] app mode' and not this.has_apps:
 				this.window.addstr(y, x, kb, curses.color_pair(2))

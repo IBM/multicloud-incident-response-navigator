@@ -44,7 +44,7 @@ has_children = []		# boolean (has children or not) for each resource in table
 row_selector = 0		# which row of the table should be highlighted
 
 bc_height = 4			# height of the breadcrumbs window
-sb_height = 7			# height of the search bar window
+sb_height = 4			# height of the search bar window
 th_height = 3			# height of the table headers window
 tr_height = 3			# height of a table row window
 table_height = 0		# height of the table window
@@ -273,12 +273,12 @@ def draw_table_window(table_window) -> None:
 
 	# Draw the row windows
 	for i, (entries, rowwin) in enumerate(row_windows):
-		draw_tr_window(rowwin, entries, grey_out=not this.has_children[i])
+		draw_tr_window(rowwin, entries, grey_out=(not this.has_children[i] and entries[0] != 'Pod'))
 
 	# Highlight the row at index this.row_selector
 	# if there are any rows
 	if len(table) > 0:
-		chs.highlight_window(row_windows[this.row_selector][1], grey=not this.has_children[this.row_selector])
+		chs.highlight_window(row_windows[this.row_selector][1], grey=(not this.has_children[this.row_selector] and row_windows[this.row_selector][0][0] != 'Pod'))
 
 
 def draw() -> None:

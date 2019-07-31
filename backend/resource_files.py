@@ -60,7 +60,6 @@ class ResourceFiles:
 		return str(time.days)+"d"
 
 	def get_events(self, cluster, namespace, uid):
-		event_list = []
 		events = self.clients[cluster]["core_client"].list_namespaced_event(namespace).items
 		events_list = [ e  for e in events if e.involved_object.uid == uid]
 		table = []
@@ -77,7 +76,6 @@ class ResourceFiles:
 				count = str(e["count"])
 				age = current_age+ " (x"+count+" over "+total_age+")"
 			else:
-				total_age = ""
 				age = current_age
 
 			source_output = ""
@@ -88,7 +86,6 @@ class ResourceFiles:
 				source_output += ", " + source["host"]
 
 			table.append([e["type"], e["reason"], age, source_output, e["message"]])
-			# https://stackoverflow.com/questions/34752611/tabulate-according-to-terminal-width-in-python
 		return table
 
 	def get_logs(self, cluster, namespace, pod_name):

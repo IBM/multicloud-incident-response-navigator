@@ -65,14 +65,12 @@ def run_skipper(stdscr):
 		resource_by_uid = { item['uid'] : item for item in data['table_items'] }
 		current_uid = table_data['table_uids'][table_data['row_selector']]
 		lwin.set_contents(*table_data.values())
-	ftype = START_FTYPE
 	lwin.draw()
 	rwin.draw(ftype, resource_by_uid[current_uid])
 
 	# state that needs to be tracked
 	c = 0
 	ltable = []				# stack to keep track of table_start_y and row selector positions
-	last_mode = START_MODE	# keeps track of last mode the user was in
 	query_state = {"resource_by_uid": {"empty": None},	# stores last known state for query mode
 					"current_uid": "empty",				# so that it can be restored when user re-enters query mode
 					"table_data": {"mode": "query",
@@ -90,6 +88,7 @@ def run_skipper(stdscr):
 
 	fmodes = { ord("y") : "yaml", ord("l") : "logs", ord("s") : "summary", ord("e") : "events"}
 	modes = { ord("1") : "cluster", ord("2") : "app", ord("3") : "anomaly"}
+
 	# start listening for keystrokes, and act accordingly
 	while c != ord('q'):
 		c = stdscr.getch()
@@ -103,13 +102,11 @@ def run_skipper(stdscr):
 			mode = "query"
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 			twin.init_load(mode)
-			table_data["mode"] = mode
 
 			# draw right before left so that cursor shows up in search bar
 			rwin.draw(ftype, query_state['resource_by_uid'][query_state['current_uid']])
 
 			# draw the left window
-			last_mode = "query"
 			lwin.set_contents(**query_state['table_data'])
 			lwin.draw()
 
@@ -131,7 +128,7 @@ def run_skipper(stdscr):
 			panel_side = "left"
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 
-		elif c ==  ord('R') :
+		elif c == ord('R') :
 			panel_side = "right"
 			twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 
@@ -219,15 +216,15 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 			curses.curs_set(1)
 			sb.move_right()
 		elif c == 258:	# down arrow
+			curses.curs_set(0)
 			current_uid = lwin.move_down()
 			table_data['row_selector'] = lwin.row_selector
 			rwin.draw(ftype, resource_by_uid[current_uid])
-			sb.show_cursor()
 		elif c == 259:	# up arrow
+			curses.curs_set(0)
 			current_uid = lwin.move_up()
 			table_data['row_selector'] = lwin.row_selector
 			rwin.draw(ftype, resource_by_uid[current_uid])
-			sb.show_cursor()
 		elif c == 1:	# ctrl-a
 			curses.curs_set(1)
 			sb.move_to_start()
