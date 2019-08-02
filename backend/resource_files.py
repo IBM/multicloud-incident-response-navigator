@@ -61,7 +61,7 @@ class ResourceFiles:
 
 	def get_events(self, cluster, namespace, uid):
 		events = self.clients[cluster]["core_client"].list_namespaced_event(namespace).items
-		events_list = [ e  for e in events if e.involved_object.uid == uid]
+		events_list = [ e  for e in events if e.involved_object.uid == uid ]
 		table = []
 		for e in events_list:
 			e = e.to_dict()

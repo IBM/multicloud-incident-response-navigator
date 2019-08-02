@@ -49,23 +49,17 @@ def draw(ftype, resource_data):
 
 	file_types = { "yaml" : "Yaml: "+ this.rname, "summary" :  this.rtype + ": " + this.rname, "logs" : "Logs: "+ this.rname, "events" : "Events: "+ this.rname}
 
+
 	if ftype == "yaml":
-		if resource_data["rtype"] != "Cluster":
-			this.yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
-		else: # cluster yamls are stored instead of directly queried from the api
-			if resource_data["info"] != "None":
-				info = json.loads(resource_data["info"])
-				this.yaml = info["yaml"].split('\n')
-			else:
-				this.yaml = ["Yaml not found"]
-		this.doc_height = max(this.panel_height, calc_height(this.yaml, this.panel_width-INDENT_AMT) + 3)
+		get_yaml(resource_data)
+		this.doc_height = max(this.panel_height, calc_height(this.yaml, this.panel_width-INDENT_AMT) + 5)
 		this.doc_width = this.panel_width
 		draw_pad(this.doc_height, this.doc_width)
 		draw_yaml(resource_data, this.yaml)
 
 	elif ftype == "logs":
 		this.logs = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "logs")).json()["logs"].split('\n')
-		this.doc_height = max(this.panel_height, calc_height(this.logs, this.panel_width-INDENT_AMT) + 3)
+		this.doc_height = max(this.panel_height, calc_height(this.logs, this.panel_width-INDENT_AMT) + 5)
 		this.doc_width = this.panel_width
 		draw_pad(this.doc_height, this.doc_width)
 		draw_logs(resource_data, this.logs)
@@ -83,38 +77,38 @@ def draw(ftype, resource_data):
 		else:
 			new_table = []
 			if len(events_table):
-				short_table = [ event[:-1] for event in events_table ]
+				short_table = [ event[:-1] for event in events_table ] # table w/o the last message column
 				tabulated_short = tabulate(short_table, headers=event_headers[:-1],  tablefmt="github")
-				short_width = len(tabulated_short.split('\n')[0])
+				short_width = len(tabulated_short.split('\n')[0]) # width of the shortened table
 				width = (this.panel_width-short_width-INDENT_AMT) - 5 # calculating width of column
 
 				messages = [ event[-1] for event in events_table ]
 				for msg, event in zip(messages, short_table):
 					if len(msg):
+						msg = msg.replace('\n', '')
 						msg = [ msg[i:i + width] for i in range(0, len(msg), width)]
-						event.append(msg[0])
+						event.append(msg[0]) # appending first line  of message to row of events
 					else:
-						event.append(msg)
-					new_table.append(event)
+						event.append(msg) # or if message is empty, append that
+					new_table.append(event) # adding new event to constructed table
+
 					if len(msg) > 1:
 						for line in msg[1:]:
 							new_table.append(["", "", "", "", line])
-
 
 				new_table = tabulate(new_table, headers=event_headers, tablefmt="github").split('\n')
 
 			else:
 				new_table.append("No events found")
-
 			this.doc_width = this.panel_width
-			this.doc_height = max(this.panel_height, len(events_table) + 3)
+			this.doc_height = max(len(new_table) + 5, this.panel_height)
 			draw_pad(this.doc_height, this.doc_width)
 			draw_events(resource_data, new_table)
 
-
 	elif ftype == "summary":
-		this.doc_height = this.panel_height
-		draw_summary(resource_data)
+		get_yaml(resource_data)
+		draw_pad(max(this.panel_height, calc_height(this.yaml, this.panel_width-INDENT_AMT) + 5), this.panel_width)
+		this.doc_height = max(this.panel_height, draw_summary(resource_data))
 	"""
 	INDENT_AMT+1 is to match the alignment of top (name) banner
 	"""
@@ -144,7 +138,7 @@ def draw_logs(resource_data, logs):
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 	if resource_data["rtype"] in ["Pod"]:
 		for i in range (len(logs)):
-			draw_str(win, 1, INDENT_AMT, logs[i], panel_width-INDENT_AMT)
+			draw_str(win, 1, INDENT_AMT, this.logs[i], panel_width-INDENT_AMT)
 	else:
 		win.addstr(1, INDENT_AMT, "Logs only exist for pods")
 
@@ -172,8 +166,7 @@ def draw_summary(resource_data):
 		this.win.refresh(0, 0, this.top_height+2, this.panel_width+1, this.panel_height+this.top_height-1, 2*this.panel_width-2)
 		return
 
-	rtype, rname = resource_data['rtype'], resource_data['name']
-	resource_data["status"] = status
+	rtype, rname, resource_data['status'] = resource_data['rtype'], resource_data['name'],  status
 
 	if resource_data["created_at"] != "None":
 		resource_data["age"] = calc_age(datetime.datetime.utcnow() - parse(resource_data["created_at"]))
@@ -200,6 +193,18 @@ def draw_summary(resource_data):
 		y = draw_service(resource_data)
 	else:
 		y = 0
+
+	return y
+
+def get_yaml(resource_data):
+	if resource_data["rtype"] != "Cluster":
+		this.yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
+	else: # cluster yamls are stored instead of directly queried from the api
+		if resource_data["info"] != "None":
+			info = json.loads(resource_data["info"])
+			this.yaml = info["yaml"].split('\n')
+		else:
+			this.yaml = ["Yaml not found"]
 
 def draw_service(resource_data):
 	"""
@@ -346,7 +351,7 @@ def draw_pod(resource_data):
 
 	if resource_data.get("application"):
 		lfields.append("Application: " + resource_data["application"])
-		
+
 	lefty = iterate_info(win, left, right, lfields, rfields, width)
 	righty = lefty
 
@@ -381,7 +386,7 @@ def draw_pod(resource_data):
 		for line in lines:
 			y = draw_str(win, y, INDENT_AMT, line, width-2*INDENT_AMT)
 
-	return y
+	return y + 3
 
 def draw_cluster(resource_data):
 	"""
