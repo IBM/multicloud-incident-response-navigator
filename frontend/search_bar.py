@@ -37,7 +37,7 @@ def draw() -> None:
 	Draws the search bar, shows the outstanding query, moves the cursor to end of query.
 	"""
 	this.instruction_window = this.window.derwin(1, this.width, 0, 0)
-	this.instruction_window.addstr(0, LEFT_PADDING, "Sample query: \"app:bookinfo kind:pod cluster:iks ns:default redis\"")
+	this.instruction_window.addstr(0, LEFT_PADDING, "Example: \"app:myapp kind:pod cluster:iks ns:default redis\"")
 	escape_instruction = "[esc] to exit search bar"
 	this.instruction_window.addstr(0, this.width - len(escape_instruction) - 1, escape_instruction)
 	this.instruction_window.refresh()

@@ -24,6 +24,12 @@ def run_skipper(stdscr):
 	START_PANEL = "left"
 	# initialize stdscr (standard screen)
 	stdscr = chs.initialize_curses()
+	height, width = stdscr.getmaxyx()
+
+	# if terminal size doesn't meet requirements
+	if height < 40 or width < 180:
+		shs.terminal_size_reminder(stdscr)
+		return
 
 	# on startup, show loading screen
 	# get the data for the initial cluster mode screen that lists all clusters
@@ -37,7 +43,6 @@ def run_skipper(stdscr):
 	panel_side = START_PANEL
 
 	# initialize and draw top window
-	height, width = stdscr.getmaxyx()
 	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0, data['has_apps'])	# height, width, y, x, has_apps
 	twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 	twin.init_load(mode)
