@@ -2,7 +2,7 @@
 
 echo -ne "Starting Skipper..."
 
-# create the logs directory, if needed
+# create the logs directory and log files, if needed
 mkdir -p logs
 
 # kill webserver child process when this process exits
@@ -11,14 +11,18 @@ trap 'kill $(jobs -p)' EXIT
 # enter into virtualenv
 source venv/bin/activate
 
+# start crawler in the background
+echo -ne "\rStarting crawler..."
+python3 ./controller/crawler.py >> ./logs/crawler.log 2>&1 &
+
 # start webserver in background
 echo -ne "\rStarting flask webserver..."
 cd ./controller/webserver
 flask run >> ../../logs/flask.log 2>&1 &
+cd ../../
 
 # wait until webserver is ready
 echo -ne "\r"
-cd ../../
 python3 run/wait.py
 
 # exit if user keyboard interrupted

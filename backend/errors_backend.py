@@ -1,12 +1,89 @@
 import cluster_mode_backend as cmb
+from typing import Tuple
+import kubernetes as k8s
 import k8s_config
 import k8s_api
 import requests
 import metrics
 import json
 
-# check what clusters we can access
-k8s_config.update_available_clusters()
+# used for type suggestions
+V1Pod = k8s.client.models.v1_pod.V1Pod
+
+# helper function that, given a V1Pod object, returns the sev_measure and status
+def pod_state(pod: V1Pod) -> Tuple[int, str]:
+    pod_ns = pod.metadata.namespace
+    pod_cluster = pod.metadata.cluster_name
+    containers = []
+    for ct in pod.spec.containers:
+        containers.append(ct.name)
+
+    reason = pod.status.phase
+    if pod.status.reason is not None:
+        reason = pod.status.reason
+
+    initializing = False
+    restarts = 0
+
+    # loop through the containers
+    if pod.status.init_container_statuses != None:
+        for i,ct in enumerate(pod.status.init_container_statuses):
+            restarts += ct.restart_count
+
+            if ct.state.terminated != None and ct.state.terminated.exit_code == 0:
+                continue
+            elif ct.state.terminated != None:
+                # initialization failed
+                if len(ct.state.terminated.reason) == 0:
+                    if ct.state.terminated.signal != 0:
+                        reason = "Init:Signal:{}".format(ct.state.terminated.signal)
+                    else:
+                        reason = "Init:ExitCode:{}".format(ct.state.terminated.exit_code)
+                else:
+                    reason = "Init:" + ct.state.terminated.reason
+                initializing = True
+            elif ct.state.waiting != None and len(ct.state.waiting.reason) > 0 and ct.state.waiting.reason != "PodInitializing":
+                reason = "Init:" + ct.state.waiting.reason
+            else:
+                reason = "Init:{}/{}".format(i, len(pod.spec.init_containers))
+                initializing = True
+            break
+
+    if not initializing:
+        # clear and sum the restarts
+        restarts = 0
+        hasRunning = False
+        if pod.status.container_statuses != None:
+            for ct in pod.status.container_statuses[::-1]:
+                restarts += ct.restart_count
+
+                if ct.state.waiting != None and ct.state.waiting.reason != None:
+                    reason = ct.state.waiting.reason
+                elif ct.state.terminated != None and ct.state.terminated.reason != None:
+                    reason = ct.state.terminated.reason
+                elif ct.state.terminated != None and ct.state.terminated.reason == None:
+                    if ct.state.terminated.signal != 0:
+                        reason = "Signal:{}".format(ct.state.terminated.signal)
+                    else:
+                        reason = "ExitCode:{}".format(ct.state.terminated.exit_code)
+                elif ct.ready and ct.state.running != None:
+                    hasRunning = True
+
+        # change pod status back to Running if there is at least one container still reporting as "Running" status
+        if reason == "Completed" and hasRunning:
+            reason = "Running"
+
+    if pod.metadata.deletion_timestamp != None and pod.status.reason == "NodeLost":
+        reason = "Unknown"
+    elif pod.metadata.deletion_timestamp != None:
+        reason = "Terminating"
+
+    message = pod.status.message if pod.status.message != None else ''
+
+    # TODO will need to test with more data
+    if reason not in ['Running','Succeeded','Completed']:
+        return (1, reason)
+    return (0, reason)
 
 def get_unhealthy_pods():
     """
@@ -17,6 +94,7 @@ def get_unhealthy_pods():
     """
 
     bad_pods = []
+    table_rows = []
     pod_list = []
 
     # getting all pods
@@ -99,18 +177,12 @@ def get_unhealthy_pods():
         # TODO will need to test with more data
         if reason not in ['Running','Succeeded','Completed']:
             skipper_uid = pod_cluster + "_" + pod.metadata.uid
-            bad_pods.append((skipper_uid, 'Pod', pod.metadata.name, reason, message))
+            pod.metadata.cluster_name = pod_cluster
+            pod.metadata.sev_reason = reason
+            bad_pods.append(pod)
+            table_rows.append((skipper_uid, 'Pod', pod.metadata.name, reason, message))
 
-            pod_metrics, container_metrics = metrics.aggregate_pod_metrics(pod_cluster, pod_ns, pod.metadata.name)
-            info = {'pod_metrics': pod_metrics, 'container_metrics': container_metrics}
-
-            created_at = pod.metadata.creation_timestamp
-            # write pods to db
-            resource_data = {'uid': skipper_uid, "created_at": created_at, "rtype": 'Pod',
-                             "name": pod.metadata.name, "cluster": pod_cluster, "namespace": pod_ns, "info": json.dumps(info)}
-            requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
-
-    return bad_pods
+    return (table_rows, bad_pods)
 
 def get_resources_with_bad_events():
     """

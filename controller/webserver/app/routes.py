@@ -7,10 +7,11 @@ import sqlalchemy, yaml
 
 
 sys.path.insert(0,'../../backend')
-# sys.path.insert(0,'../crawler')
-import resource_files, errors_backend, metrics
+import resource_files, metrics
 import apps, clients_resources, k8s_config
-import cluster_mode_backend as cmb, app_mode_backend as amb
+import cluster_mode_backend as cmb
+import app_mode_backend as amb
+import errors_backend as eb
 
 
 # loads the user's kube-config
@@ -18,7 +19,19 @@ import cluster_mode_backend as cmb, app_mode_backend as amb
 running, e = k8s_config.load_kube_config()
 info_handler = resource_files.ResourceFiles()
 
-def row_to_dict(row):
+def to_json(k8s_obj) -> str:
+	to_s = lambda dt: dt.__str__()
+	return json.dumps(k8s_obj.to_dict(), default=to_s)
+
+# check if user has a db
+try:
+	db.session.query(Resource).first()
+except sqlalchemy.exc.OperationalError as e:
+	db.create_all()
+
+
+# helper function that converts a Resource or Edge into a dictionary
+def row_to_dict(row) -> dict:
 	d = {}
 	for column in row.__table__.columns:
 		d[column.name] = str(getattr(row, column.name))
@@ -34,6 +47,7 @@ def has_children(table):
 @app.route('/index')
 def index():
 	return "Hello, World!"
+
 
 @app.route('/running')
 def status():
@@ -55,109 +69,76 @@ def start(mode):
 									current_resource (Resource)
 	"""
 
-	db.drop_all()
-	db.create_all()
+	# k8s_config.update_available_clusters()
 
-	k8s_config.update_available_clusters()
+	cluster_rows = db.session.query(Resource).filter(Resource.rtype=="Cluster").all()
+	if len(cluster_rows) == 0:
+		# lazy load clusters
+		clusters = k8s_config.all_cluster_names()
+		mcm_clusters = cmb.mcm_clusters(clusters)
+		for cluster in clusters:
+			if cluster in mcm_clusters:
+				mcm_cluster  = mcm_clusters[cluster]
+				mcm_cluster["yaml"] = yaml.dump(mcm_cluster, sort_keys=False)
+				resource_data = {'uid': cluster, "rtype": 'Cluster', "name": cluster,
+								 "cluster": cluster, "cluster_path": "/root/",
+								 "info" : json.dumps(mcm_cluster)}
+			else:
+				resource_data = {"uid": cluster, "rtype": "Cluster", "name": cluster,
+								 "cluster": cluster, "cluster_path": "/root/"}
+			edge_data = {'start_uid': 'root', 'end_uid': cluster, 'relation': "Root<-Cluster"}
+			requests.post('http://127.0.0.1:5000/resource/{}'.format(cluster), data=resource_data)
+			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format('root', cluster), data=edge_data)
 
-	# lazy load clusters
-	all_clusters = k8s_config.all_cluster_names()
-	mcm_clusters = cmb.mcm_clusters(all_clusters)
-	for cluster in all_clusters:
-		if cluster in mcm_clusters:
-			local_cluster = cluster
-			cluster = mcm_clusters[cluster]
-			created_at = cluster["metadata"].get("creationTimestamp")
-			labels = cluster["metadata"]["labels"] if cluster["metadata"].get("labels") else "None"
-			status = cluster["status"] if cluster.get("status") else "None"
-			remote_name = cluster["metadata"]["name"] if cluster["metadata"].get("name") else "None"
-			remote_namespace = cluster["metadata"]["namespace"] if cluster["metadata"].get("namespace") else "None"
-			uid = cluster["metadata"]["uid"] if cluster["metadata"].get("uid") else "None"
-			yml = yaml.dump(cluster, sort_keys=False)
-			info =  { "labels" : labels, "status": status,  "remote_name": remote_name, "remote_namespace": remote_namespace, "k8s_uid" : uid, "yaml" : yml}
-			resource_data = {'uid': local_cluster, "rtype": 'Cluster', "name": local_cluster , "cluster": local_cluster ,
-						 "cluster_path": "/root/", "created_at" : created_at, "info" : json.dumps(info)}
-			cluster = local_cluster
-		else:
-			resource_data = {'uid': cluster, "rtype": 'Cluster', "name": cluster, "cluster": cluster,
-						 "cluster_path": "/root/"}
-		requests.post('http://127.0.0.1:5000/resource/{}'.format(cluster), data=resource_data)
-		edge_data = {'start_uid': 'root', 'end_uid': cluster, 'relation': "Root<-Cluster"}
-		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format('root', cluster), data=edge_data)
-
-		# lazy load namespaces
-		namespaces = cmb.cluster_namespaces(cluster)
-		for ns in namespaces:
-			ns = ns.to_dict()
-			skipper_uid = cluster + "_" + ns["metadata"]["name"]
-			labels = ns["metadata"]["labels"] if ns["metadata"].get("labels") else "None"
-			info = { "k8s_uid" : ns["metadata"]["uid"], "labels" : labels, "status" : ns["status"]["phase"]}
-			created_at = ns["metadata"]["creationTimestamp"] if ns["metadata"].get("creationTimestamp") else ns["metadata"]["creation_timestamp"]
-			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"],
-							 "cluster": cluster, "namespace": ns["metadata"]["name"],
-							 "cluster_path": "/root/{}/".format(cluster), "info": json.dumps(info)}
-			requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
-			edge_data = {'start_uid': cluster, 'end_uid': skipper_uid, 'relation': "Cluster<-Namespace"}
-			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(cluster, skipper_uid), data=edge_data)
+			# lazy load namespaces
+			namespaces = cmb.cluster_namespaces(cluster)
+			for ns in namespaces:
+				ns_uid = cluster + "_" + ns.metadata.uid
+				ns_name = ns.metadata.name
+				created_at = ns.metadata.creation_timestamp
+				resource_data = {"uid": ns_uid, "created_at": created_at, "rtype": "Namespace",
+							"name": ns_name, "cluster": cluster, "namespace": ns_name,
+							"cluster_path": "/root/{}/".format(cluster),
+							"info": to_json(ns)}
+				edge_data = {'start_uid': cluster, 'end_uid': ns_uid, 'relation': "Cluster<-Namespace"}
+				requests.post('http://127.0.0.1:5000/resource/{}'.format(ns_uid), data=resource_data)
+				requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(cluster, ns_uid), data=edge_data)
 
 	# lazy load applications
-	apps = amb.all_applications()
-	has_apps = True if len(apps) > 0 else False
-	for app in apps:
-		app_cluster = app["metadata"]["cluster_name"]
-		app_name = app["metadata"]["name"]
-		app_uid = app_cluster + "_" + app["metadata"]["uid"]
-		app_ns = app["metadata"]["namespace"]
-		labels = app["metadata"]["labels"] if app["metadata"].get("labels") else "None"
-		status = app["metadata"]["status"] if app["metadata"].get("status") else "None"
+	app_rows = db.session.query(Resource).filter(Resource.rtype=="Application").all()
+	has_apps = True
+	if len(app_rows) == 0:
+		apps = amb.all_applications()
+		has_apps = True if len(apps) > 0 else False
+		for app in apps:
+			md = app["metadata"]
+			app_name, app_cluster, app_ns, k8s_uid = md["name"], md["cluster_name"], md["namespace"], md["uid"]
+			app_uid = app_cluster + "_" + k8s_uid
+			created_at = parse(md["creationTimestamp"])
 
-		info = { "labels" : labels, "status" : status, \
-				 "deployables" : app["metadata"]["annotations"]['apps.ibm.com/deployables']}
+			data = { "uid": app_uid, "created_at": created_at, "rtype": "Application",
+							"name": app_name, "cluster": cluster, "namespace": app_ns, "application": app_name,
+								"app_path": "/root/", "info": json.dumps(app)}
 
-		data = {"application": app_name, 'uid': app_uid, "created_at": app["metadata"].get("creationTimestamp"), "rtype": "Application",
-				"name": app_name, "cluster": app_cluster, "namespace": app_ns, "app_path": "/root/", "info" : json.dumps(info)}
-		requests.post('http://127.0.0.1:5000/resource/{}'.format(app_uid), data=data)
-		edge_data = {'start_uid': 'root', 'end_uid': app_uid, 'relation': "Root<-Application"}
-		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format('root', app_uid), data=edge_data)
+			requests.post('http://127.0.0.1:5000/resource/{}'.format(app_uid), data=data)
+			edge_data = {'start_uid': 'root', 'end_uid': app_uid, 'relation': "Root<-Application"}
+			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format('root', app_uid), data=edge_data)
 
-		# lazy load deployables
-		dpbs = amb.application_deployables(app_cluster, app_ns, app_name)
-		for dpb in dpbs:
-			cluster = dpb["metadata"]["cluster_name"]
-			namespace = dpb["metadata"]["namespace"]
-			dpb_uid = cluster + "_" + dpb["metadata"]["uid"]
-			created_at = dpb["metadata"].get("creationTimestamp")
-			labels = dpb["metadata"]["labels"] if dpb["metadata"].get("labels") else "None"
-			info = { "labels" : labels, "status" : app["status"]}
-			if not created_at:
-				created_at = dpb["metadata"]["creation_timestamp"]
-			resource_data = {"application": app_name, 'uid': dpb_uid, "created_at": created_at, "rtype": "Deployable",
-							 "name": dpb["metadata"]["name"], "cluster": cluster, "namespace": namespace,
-							 "app_path": "/root/{}/".format(app_uid), "info" : json.dumps(info)}
-			requests.post('http://127.0.0.1:5000/resource/{}'.format(dpb_uid), data=resource_data)
-			edge_data = {'start_uid': app_uid, 'end_uid': dpb_uid, 'relation': "Application<-Deployable"}
-			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(app_uid, dpb_uid), data=edge_data)
+			# lazy load deployables
+			dpbs = amb.application_deployables(app_cluster, app_ns, app_name)
+			for dpb in dpbs:
+				md = dpb["metadata"]
+				dpb_name, k8s_uid, cname, ns = md["name"], md["uid"], md["cluster_name"], md["namespace"]
+				dpb_uid = cname + "_" + k8s_uid
+				created_at = parse(dpb["metadata"]["creationTimestamp"])
 
-	# # load all
-	#
-	# # get all resources (app and cluster)
-	# clusters, clients, active_clusters = clients_resources.get_clients()
-	# big_json = clients_resources.get_resources(clusters, clients, active_clusters)
-	# resources = clients_resources.order_resources(big_json)
-	# for res in resources.keys():
-	# 	requests.post('http://127.0.0.1:5000/resource/{}', data=resources[res])
-	#
-	# # get all edges (app and cluster) and update resource paths (breadcrumbs built while getting edges)
-	# edges, cluster_paths, app_paths = clients_resources.order_edges_and_paths(big_json)
-	# for edge in edges:
-	# 	edge_dict = {'start_uid': edge[0], 'end_uid': edge[1], 'relation': edge[2]}
-	# 	requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(edge[0],edge[1]), data=edge_dict)
-	# for res in cluster_paths.keys():
-	# 	cpath_dict = {'cluster_path': cluster_paths[res]}
-	# 	requests.put('http://127.0.0.1:5000/resource/{}'.format(res), data=cpath_dict)
-	# for res in app_paths.keys():
-	# 	apath_dict = {'app_path': app_paths[res]}
-	# 	requests.put('http://127.0.0.1:5000/resource/{}'.format(res), data=apath_dict)
+				resource_data = {"uid": dpb_uid, "created_at": created_at, "rtype": "Deployable",
+								 "name": dpb_name, "cluster": cname, "namespace": ns, "application": app_name,
+								 "app_path": "/root/{}/".format(app_uid), "info": json.dumps(dpb)}
+
+				edge_data = {'start_uid': app_uid, 'end_uid': dpb_uid, 'relation': "Application<-Deployable"}
+				requests.post('http://127.0.0.1:5000/resource/{}'.format(dpb_uid), data=resource_data)
+				requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(app_uid, dpb_uid), data=edge_data)
 
 	# get the starting apps or clusters
 	if mode == 'app':
@@ -169,21 +150,23 @@ def start(mode):
 	return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0, has_children=has_children(table), has_apps=has_apps)
 
 
-@app.route('/resource/<uid>', methods=['POST', 'PUT', 'GET', 'DELETE'])
+
+@app.route('/resource/<uid>', methods = ["GET", "POST", "PUT", "DELETE"])
 def resource(uid):
 	"""
 	All things related to a specific resource, based on request method
 	:param uid: skipper_uid of the resource
 	:return:
 	"""
-	if request.method == 'GET': # return the row for the resource as a dict
+
+	if request.method == "GET":
 		resource = db.session.query(Resource).filter(Resource.uid == uid).first()
 		return jsonify(data=row_to_dict(resource))
 	elif request.method == 'DELETE':
 		db.session.query(Resource).filter(Resource.uid == uid).delete()
 		db.session.query(Edge).filter(Edge.start_uid == uid or Edge.end_uid == uid).delete()
 		db.session.commit()
-		return "Resource and respective edges deleted"
+		return "Resource and associated edges deleted"
 	else:
 		data = request.form.to_dict()
 
@@ -198,11 +181,12 @@ def resource(uid):
 				db.session.commit()
 			except sqlalchemy.exc.IntegrityError: # unique uid already in db
 				requests.put('http://127.0.0.1:5000/resource/{}'.format(uid), data=data) # redirect as put request with same data
-
 			return "Resource saved" # TODO what is the proper thing to return?
+
 		if request.method == 'PUT': # update db
 			db.session.query(Resource).filter(Resource.uid == uid).update(data)
 			db.session.commit()
+			return "Resource updated"
 
 @app.route('/resource/<uid>/<info_type>')
 def get_resource_info(uid, info_type):
@@ -222,8 +206,112 @@ def get_resource_info(uid, info_type):
 			return jsonify(logs="Logs not found")
 		return jsonify(logs=info_handler.get_logs(resource.cluster, resource.namespace, resource.name))
 
+@app.route('/mode/<mode>/<uid>')
+def get_table_by_resource(mode, uid):
+	"""
+	Get the table and relevant info for navigating INTO a resource (aka the table lists children)
+	:param mode: 'app' or 'cluster'
+	:param uid: skipper uid of resource
+	:return: json response including path (List[str], list of names of resources in the path),
+									rtypes (List[str], list of rtypes of resources in the path),
+									index (int, row to be selected),
+									table (List[Dict], list of dictionaries for resources to be displayed),
+									current_resource (Resource)
+	"""
 
-@app.route('/edge/<start_uid>/<end_uid>', methods=['POST', 'PUT'])
+	resource = db.session.query(Resource).filter_by(uid=uid).first()
+	outgoing_edges = db.session.query(Edge).filter_by(start_uid=uid).all()
+
+	if len(outgoing_edges) == 0:
+		children = []
+		# lazy load depending on current resource type
+		if resource.rtype == 'Cluster':
+			namespaces = cmb.cluster_namespaces(resource.cluster)
+			for ns in namespaces:
+				cname = ns.metadata.cluster_name
+				ns_uid = cname + "_" + ns.metadata.uid
+				ns_name = ns.metadata.name
+				created_at = ns.metadata.creation_timestamp
+				resource_data = {"uid": ns_uid, "created_at": created_at, "rtype": "Namespace",
+								 "name": ns_name, "cluster": cname, "namespace": ns_name,
+								 "cluster_path": "/root/{}/".format(cname), "info": to_json(ns)}
+				edge_data = {'start_uid': cname, 'end_uid': ns_uid, 'relation': "Cluster<-Namespace"}
+				requests.post('http://127.0.0.1:5000/resource/{}'.format(ns_uid), data=resource_data)
+				requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(cname, ns_uid), data=edge_data)
+
+		# for all other resources, storing(child, child_type) into the children list
+		elif resource.rtype == 'Namespace':
+			children.extend([(res, "Deployment") for res in cmb.namespace_deployments(resource.name, resource.cluster)])
+			children.extend([(res, "Service") for res in cmb.namespace_services(resource.name, resource.cluster)])
+			children.extend([(res, "StatefulSet") for res in cmb.namespace_stateful_sets(resource.name, resource.cluster)])
+			children.extend([(res, "DaemonSet") for res in cmb.namespace_daemon_sets(resource.name, resource.cluster)])
+		elif resource.rtype == 'Application':
+			children.extend([(res, "Deployable") for res in amb.application_deployables(resource.cluster, resource.namespace, resource.name)])
+		elif resource.rtype == 'Deployable':
+			deployer_dict = amb.deployable_resource(resource.cluster, resource.namespace, resource.name)
+			if deployer_dict != {}:
+				children.extend([(deployer_dict, deployer_dict["kind"])])
+		elif resource.rtype == 'Deployment':
+			children.extend([(res, "Pod") for res in cmb.deployment_pods(resource.name, resource.namespace, resource.cluster)])
+		elif resource.rtype == 'Service':
+			children.extend([(res, "Pod") for res in cmb.service_pods(resource.name, resource.namespace, resource.cluster)])
+		elif resource.rtype == 'StatefulSet':
+			children.extend([(res, "Pod") for res in cmb.stateful_set_pods(resource.name, resource.namespace, resource.cluster)])
+		elif resource.rtype == 'DaemonSet':
+			children.extend([(res, "Pod") for res in cmb.daemon_set_pods(resource.name, resource.namespace, resource.cluster)])
+
+		# loop through children and add to db
+		for child, rtype in children:
+			child_obj = child.to_dict() if not isinstance(child, dict) else child
+			# get cluster, falls back to parent resource's cluster (maybe risky)
+			cluster = child_obj["metadata"]["cluster_name"] if child_obj["metadata"]["cluster_name"] is not None else resource.cluster
+			namespace = child_obj["metadata"]["namespace"]
+			skipper_uid = cluster + "_" + child_obj["metadata"]["uid"]
+			created_at = child_obj["metadata"]["creation_timestamp"] if not child_obj["metadata"].get("creationTimestamp") else child_obj["metadata"].get("creationTimestamp")
+			# build dict
+			resource_data = {'uid': skipper_uid, "created_at": created_at, \
+							 "rtype": rtype, "name" : child_obj["metadata"]["name"], \
+							 "cluster" : cluster, "namespace" : namespace, "info": json.dumps(child_obj, default=str)}
+
+			# fill in sev_measure and sev_reason fields if we are looking at a pod
+			if rtype == "Pod":
+				sm, sr = eb.pod_state(child)
+				resource_data["sev_measure"] = sm
+				resource_data["sev_reason"] = sr
+
+			# update paths
+			if resource.app_path != None:
+				resource_data['app_path'] = resource.app_path + resource.uid + "/"
+				app_uid = resource.app_path.split("/")[2]
+				resource_data["application"] = requests.get('http://127.0.0.1:5000/resource/{}'.format(app_uid)).json()['data']['name']
+
+			if resource.cluster_path != None:
+				resource_data['cluster_path'] = resource.cluster_path + resource.uid + "/"
+
+			requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
+			edge_data = {'start_uid': resource.uid, 'end_uid': skipper_uid, 'relation': resource.rtype + "<-" + rtype}
+			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(resource.uid, skipper_uid), data=edge_data)
+
+	table_items = db.session.query(Resource).join(Edge, Resource.uid == Edge.end_uid).filter(Edge.start_uid == uid).all()
+
+	# get path info for frontend
+	if mode == 'app':
+		full_path = resource.app_path
+	elif mode == 'cluster':
+		full_path = resource.cluster_path
+	full_path += "{}/".format(resource.uid)
+
+	# convert path using uids to breadcrumbs of resource names and types
+	path_uids = full_path.split("/")[2:-1]
+	path_names = []
+	path_rtypes = []
+	for res_uid in path_uids:
+		path_names.append(db.session.query(Resource.name).filter(Resource.uid == res_uid).first()[0])
+		path_rtypes.append(db.session.query(Resource.rtype).filter(Resource.uid == res_uid).first()[0])
+
+	return jsonify(path_names=path_names, path_rtypes=path_rtypes, path_uids=path_uids, table_items=[row_to_dict(t_item) for t_item in table_items], index=0, has_children=has_children(table_items))
+
+@app.route('/edge/<start_uid>/<end_uid>', methods=['POST', 'DELETE'])
 def edge(start_uid, end_uid):
 	"""
 	All things related to a specific edge, based on request method
@@ -237,9 +325,12 @@ def edge(start_uid, end_uid):
 		db.session.add(e1)
 		db.session.commit()
 		return "Edge saved"
-	elif request.method == 'PUT':
-		db.session.query(Resource).filter(Edge.start_uid == start_uid and Edge.end_uid == end_uid).update(data)
-		return "Edge updated"
+	elif request.method == 'DELETE':
+		db.session.query(Resource).filter(Edge.start_uid == start_uid and Edge.end_uid == end_uid).delete()
+		db.session.commit()
+		return "Edge deleted"
+
+
 
 @app.route('/mode/app/switch/<uid>')
 def switch_app_mode(uid):
@@ -373,160 +464,33 @@ def switch_cluster_mode(uid):
 
 	return jsonify(path_names=data['path_names'], path_rtypes=data['path_rtypes'], path_uids=data['path_uids'], table_items=siblings, index=index, has_children=data['has_children'])
 
-@app.route('/mode/<mode>/<uid>')
-def get_table_by_resource(mode, uid):
-	"""
-	Get the table and relevant info for navigating INTO a resource (aka the table lists children)
-	:param mode: 'app' or 'cluster'
-	:param uid: skipper uid of resource
-	:return: json response including path (List[str], list of names of resources in the path),
-									rtypes (List[str], list of rtypes of resources in the path),
-									index (int, row to be selected),
-									table (List[Dict], list of dictionaries for resources to be displayed),
-									current_resource (Resource)
-	"""
-
-	# TODO needs to be broken up into smaller functions
-
-	children = []
-
-	resource = db.session.query(Resource).filter_by(uid=uid).first()
-
-	# lazy load depending on current resource type
-	if resource.rtype == 'Cluster':
-		namespaces = cmb.cluster_namespaces(resource.cluster)
-		for ns in namespaces:
-			ns = ns.to_dict()
-			skipper_uid = resource.cluster + "_" + ns["metadata"]["name"]
-			labels = ns["metadata"]["labels"] if ns["metadata"].get("labels") else "None"
-			info = { "k8s_uid" : ns["metadata"]["uid"], "labels" : labels, "status" : ns["status"]["phase"]}
-			created_at =  ns["metadata"]["creationTimestamp"] if ns["metadata"].get("creationTimestamp") else ns["metadata"]["creation_timestamp"]
-			resource_data = {'uid': skipper_uid, "rtype": 'Namespace', "name": ns["metadata"]["name"], \
-							"cluster": resource.cluster, "namespace": ns["metadata"]["name"], "created_at" : created_at, \
-							"cluster_path": resource.cluster_path + resource.uid + "/", "info": json.dumps(info)}
-			requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
-			edge_data = {'start_uid': resource.uid, 'end_uid': skipper_uid, 'relation': "Cluster<-Namespace"}
-			requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(resource.uid, skipper_uid), data=edge_data)
-	# for all other resources, storing(child, child_type) into the children list
-	elif resource.rtype == 'Namespace':
-		children.extend([(res, "Deployment") for res in cmb.namespace_deployments(resource.name, resource.cluster)])
-		children.extend([(res, "Service") for res in cmb.namespace_services(resource.name, resource.cluster)])
-		children.extend([(res, "StatefulSet") for res in cmb.namespace_stateful_sets(resource.name, resource.cluster)])
-		children.extend([(res, "DaemonSet") for res in cmb.namespace_daemon_sets(resource.name, resource.cluster)])
-	elif resource.rtype == 'Application':
-		children.extend([(res, "Deployable") for res in amb.application_deployables(resource.cluster, resource.namespace, resource.name)])
-	elif resource.rtype == 'Deployable':
-		deployer_dict = amb.deployable_resource(resource.cluster, resource.namespace, resource.name)
-		if deployer_dict != {}:
-			children.extend([(deployer_dict, deployer_dict["kind"])])
-	elif resource.rtype == 'Deployment':
-		children.extend([(res, "Pod") for res in cmb.deployment_pods(resource.name, resource.namespace, resource.cluster)])
-	elif resource.rtype == 'Service':
-		children.extend([(res, "Pod") for res in cmb.service_pods(resource.name, resource.namespace, resource.cluster)])
-	elif resource.rtype == 'StatefulSet':
-		children.extend([(res, "Pod") for res in cmb.stateful_set_pods(resource.name, resource.namespace, resource.cluster)])
-	elif resource.rtype == 'DaemonSet':
-		children.extend([(res, "Pod") for res in cmb.daemon_set_pods(resource.name, resource.namespace, resource.cluster)])
-
-	# loop through children and add to db
-	for child_obj, rtype in children:
-
-		if not isinstance(child_obj, dict):
-			child_obj = child_obj.to_dict()
-
-		# get cluster, falls back to parent resource's cluster (maybe risky)
-		cluster = child_obj["metadata"]["cluster_name"] if child_obj["metadata"]["cluster_name"] is not None else resource.cluster
-		namespace = child_obj["metadata"]["namespace"]
-		skipper_uid = cluster + "_" + child_obj["metadata"]["uid"]
-		created_at = child_obj["metadata"].get("creationTimestamp")
-		if not created_at:
-			created_at = child_obj["metadata"]["creation_timestamp"]
-		labels = child_obj["metadata"]["labels"] if child_obj["metadata"].get("labels") else "None"
-		spec = child_obj.get("spec")
-		status = child_obj.get("status")
-		if spec is not None:
-			ports =  spec.get("ports")
-			selector = spec.get("selector")
-		else:
-			ports, selector = "None", "None"
-		if status is not None:
-			host_ip = status.get("host_ip")
-			phase = status.get("phase")
-			pod_ip = status.get("pod_ip")
-			container_statuses = status.get("container_statuses")
-			if container_statuses is not None:
-				ready, restarts = 0, 0
-				container_count = len(container_statuses)
-				for c in container_statuses:
-					ready += c["ready"]
-					restarts += c["restart_count"]
-				ready = str(ready) + "/" + str(container_count)
-			else:
-				ready, restarts, container_count  = "None", "None", "None"
-
-			# available, up-to-date, and ready replicas for both deployments and daemonsets
-			available, updated, ready_replicas, replicas, ready_reps = extract_readiness(status)
-
-		else:
-			host_ip, phase, pod_ip, ready, restarts, container_count  = None, None, None, "None", "None", 0
-
-		owner_refs = child_obj["metadata"]["owner_references"] if child_obj["metadata"].get("owner_references") else "None"
-		info = {"labels" : labels, "ports" : ports, "selector" : selector, \
-				"owner_refs" : owner_refs, "host_ip" : host_ip, "phase" : phase, "pod_ip" : pod_ip, "ready" : ready, "restarts" : str(restarts),\
-				"available" : str(available), "updated" : str(updated), "ready_reps" : str(ready_reps)}
-
-		if rtype == 'Pod':
-			pod_metrics, container_metrics = metrics.aggregate_pod_metrics(cluster, namespace, child_obj["metadata"]["name"])
-			info['pod_metrics'] = pod_metrics
-			info['container_metrics'] = container_metrics
-
-		# build dict
-		resource_data = {'uid': skipper_uid, "created_at": created_at, \
-						 "rtype": rtype, "name" : child_obj["metadata"]["name"], \
-						 "cluster" : cluster, "namespace" : namespace, "info": json.dumps(info)}
-
-		# update paths
-		if resource.app_path != None:
-			resource_data['app_path'] = resource.app_path + resource.uid + "/"
-			resource_data['application'] = resource.application
-		if resource.cluster_path != None:
-			resource_data['cluster_path'] = resource.cluster_path + resource.uid + "/"
-
-		requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
-		edge_data = {'start_uid': resource.uid, 'end_uid': skipper_uid, 'relation': resource.rtype + "<-" + rtype}
-		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(resource.uid, skipper_uid), data=edge_data)
-
-	table_items = db.session.query(Resource).join(Edge, Resource.uid == Edge.end_uid).filter(Edge.start_uid == uid).all()
-
-	# get path info for frontend
-	if mode == 'app':
-		full_path = resource.app_path
-	elif mode == 'cluster':
-		full_path = resource.cluster_path
-	full_path += "{}/".format(resource.uid)
-
-	# convert path using uids to breadcrumbs of resource names and types
-	path_uids = full_path.split("/")[2:-1]
-	path_names = []
-	path_rtypes = []
-	for res_uid in path_uids:
-		path_names.append(db.session.query(Resource.name).filter(Resource.uid == res_uid).first()[0])
-		path_rtypes.append(db.session.query(Resource.rtype).filter(Resource.uid == res_uid).first()[0])
-
-	return jsonify(path_names=path_names, path_rtypes=path_rtypes, path_uids=path_uids, table_items=[row_to_dict(t_item) for t_item in table_items], index=0, has_children=has_children(table_items))
 
 @app.route('/errors')
 def get_errors():
 	# each item in table_items list is (skipper_uid, type, name, status, reason)
 
-	# pods = errors_backend.get_unhealthy_pods()
-	resources = errors_backend.get_resources_with_bad_events()
-	return jsonify(table_items=resources)
+	anomalies = db.session.query(Resource).filter(Resource.sev_measure==1).all()
+	if len(anomalies) > 0:
+		return jsonify(table_items=[ (a.uid, a.rtype, a.name, a.sev_reason) for a in anomalies ])
 
-# @app.route('/viewqueue')
-# def view_queue():
-# 	queue = crawler.update_queue()
-# 	return jsonify(queue=queue)
+	# resources = errors_backend.get_resources_with_bad_events()
+	table_rows, pods = eb.get_unhealthy_pods()
+
+	# write anomalous pods the db
+	for pod in pods:
+		pod_cluster = pod.metadata.cluster_name
+		pod_ns = pod.metadata.namespace
+		skipper_uid = pod_cluster + "_" + pod.metadata.uid
+		created_at = pod.metadata.creation_timestamp
+		# write pods to db
+		resource_data = {'uid': skipper_uid, "created_at": created_at, "rtype": 'Pod',
+						 "name": pod.metadata.name, "cluster": pod_cluster, "namespace": pod_ns,
+						 "sev_measure": 1, "sev_reason": pod.metadata.sev_reason, "info": to_json(pod)}
+		requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
+
+	return jsonify(table_items=table_rows)
+
+
 
 @app.route('/view_resources')
 def view_resources():
@@ -580,28 +544,3 @@ def empty_search():
 # def redirectme():
 # 	result = redirect(url_for('view_db'))
 # 	return result
-
-def extract_readiness(status):
-	if status.get("available_replicas"):
-		available = status["available_replicas"]
-	else:
-		available = status["number_available"] if status.get("number_available") else "0"
-
-	if status.get("updated_replicas"):
-		updated = status["updated_replicas"]
-	else:
-		updated = status["updated_number_scheduled"] if status.get("updated_number_scheduled") else "0"
-
-	if status.get("ready_replicas"):
-		ready_replicas = status["ready_replicas"]
-	else:
-		ready_replicas = status["number_ready"] if status.get("number_ready") else "0"
-
-	if status.get("replicas"):
-		replicas = status["replicas"]
-	else:
-		replicas = status["current_number_scheduled"] if status.get("current_number_scheduled") else "0"
-
-	ready_reps = str(ready_replicas) + "/" + str(replicas)
-
-	return available, updated, ready_replicas, replicas, ready_reps

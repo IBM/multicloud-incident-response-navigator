@@ -69,7 +69,23 @@ def run_skipper(stdscr):
 						}
 		resource_by_uid = { item['uid'] : item for item in data['table_items'] }
 		current_uid = table_data['table_uids'][table_data['row_selector']]
-		lwin.set_contents(*table_data.values())
+	else:
+		table_data = {	"mode": START_MODE,
+						"col_names": ["kind", "name"],
+						"col_widths": [20,60],
+						"table": [],
+						"row_selector": 0,
+						"start_y": 0,
+						"path_names": [],
+						"path_rtypes": [],
+						"path_uids": [],
+						"table_uids": [],
+						"has_children": []
+						}
+		resource_by_uid = { "empty": None }
+		current_uid = "empty"
+
+	lwin.set_contents(**table_data)
 	lwin.draw()
 	rwin.draw(ftype, resource_by_uid[current_uid])
 

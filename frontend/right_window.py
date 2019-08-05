@@ -4,6 +4,9 @@ import tabulate
 tabulate.PRESERVE_WHITESPACE = True
 from tabulate import tabulate
 
+sys.path.insert(0,'./../backend')
+import metrics
+
 this = sys.modules[__name__]
 
 INDENT_AMT = 4 # horizontal indent amount
@@ -202,7 +205,8 @@ def get_yaml(resource_data):
 	else: # cluster yamls are stored instead of directly queried from the api
 		if resource_data["info"] != "None":
 			info = json.loads(resource_data["info"])
-			this.yaml = info["yaml"].split('\n')
+			yaml = info["yaml"]
+			this.yaml = yaml.split('\n')
 		else:
 			this.yaml = ["Yaml not found"]
 
@@ -213,17 +217,17 @@ def draw_service(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
+	labels, selector, ports, status = None, None, None, None
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
-		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
-		selector = info["selector"] if info.get("selector") and (info.get("selector") != "None") else None
-		ports = info["ports"] if info.get("ports") and (info.get("ports") != "None") else None
-		# labels, selector, ports = info.get("labels"), info.get("selector"), info.get("ports")
-	else:
-		labels, selector, ports = None, None, None
+		labels = info["metadata"]["labels"] if info["metadata"].get("labels") else None
+		selector = info["spec"]["selector"] if info["spec"].get("selector") else None
+		ports = info["spec"]["ports"] if info["spec"].get("ports") else None
+		status = info["status"]
+
 
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"]]
-	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + resource_data["status"]]
+	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"]]
 
 	if resource_data.get("application"):
 		lfields.append("Application: " + resource_data["application"])
@@ -235,10 +239,10 @@ def draw_service(resource_data):
 		lefty = draw_pairs(left, lefty, "Labels:", width//2-INDENT_AMT, labels)
 	if selector is not None:
 		lefty = draw_pairs(left, lefty, "Selector:", width//2-INDENT_AMT, selector)
-
 	if ports is not None:
-		# draw_str(right, righty, INDENT_AMT, str(ports[0]), width//2-2*INDENT_AMT)
 		righty = draw_pairs(right, righty, "Ports: ", width//2-2*INDENT_AMT, ports[0])
+	if status is not None:
+		righty = draw_pairs(right, righty, "Status: ", width//2-2*INDENT_AMT, status)
 
 	return max(lefty,righty)
 
@@ -249,31 +253,59 @@ def draw_work(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
+	labels, available, unavailable, updated, reps, ready = None, "None", "None", "None", 'None', 'None'
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
-		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
-		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
-		available = info["available"] if info.get("available") and (info.get("available") != "None") else "0"
-		updated = info["updated" ] if info.get("updated") and (info.get("updated") != "None") else "0"
-		ready_reps = info["ready_reps"] if info.get("ready_reps") and (info.get("ready_reps") != "None") else "0"
-	else:
-		labels, status, available, updated, ready_reps = "None", "None", "None", "None", "None"
+		labels = info["metadata"]["labels"] if info["metadata"].get("labels") else None
+		status = info["status"] if info.get("status") else {}
+		if (resource_data['rtype'] == 'Deployment'):
+			updated = str(status["updated_replicas"]) if status.get("updated_replicas") else "0"
+			available = str(status["available_replicas"]) if status.get("available_replicas") else "0"
+			unavailable = str(status["unavailable_replicas"]) if status.get("unavailable_replicas") else "0"
+			ready = str(status["ready_replicas"]) if status.get("ready_replicas") else "0"
+			reps = str(status["replicas"]) if status.get("replicas")  else "0"
 
+		elif (resource_data['rtype'] == 'DaemonSet'):
+			updated = str(status["updated_number_scheduled"]) if status.get("updated_number_scheduled") else "0"
+			available = str(status["number_available"]) if status.get("number_available")else "0"
+			unavailable = str(status["number_unavailable"]) if status.get("number_unavailable") else "0"
+			ready = str(status["number_ready"]) if status.get("number_ready") else "0"
+			reps = str(status["desired_number_scheduled"]) if status.get("desired_number_scheduled")  else "0"
+
+		elif (resource_data['rtype'] == 'StatefulSet'):
+			reps = str(status["replicas"]) if status.get("replicas")  else "0"
+			ready = str(status["ready_replicas"]) if status.get("ready_replicas")  else "0"
+
+	ready_reps = ready + '/' + reps
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"]]
 	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"]]
 
 	if resource_data.get("application"):
 		lfields.append("Application: " + resource_data["application"])
 
-	if resource_data['rtype'] not in ["Deployable", "StatefulSet"]:
-		rfields.extend(["Ready: " + ready_reps, "Available: " + available, "Up-to-date: " + updated])
+	if resource_data['rtype'] == "Deployment":
+		rfields.extend(["Ready: " + ready_reps, "Up-to-date: " + updated, "Available: " + available])
+
+	elif resource_data['rtype'] == "DaemonSet":
+		rfields.extend(["Up-to-date: " + updated, "Available: " + available, "Ready: " + ready])
+
+	elif resource_data['rtype'] == "StatefulSet":
+		rfields.append("Ready: " + ready_reps)
 	y = iterate_info(win, left, right, lfields, rfields, width)
 
+	lefty = righty = y
+
 	if labels is not None:
-		y = draw_pairs(left, y, "Labels:", width//2-INDENT_AMT, labels)
-	if status is not None:
-		y = draw_pairs(left, y, "Status:", width//2-INDENT_AMT, status)
-	return y
+		lefty = draw_pairs(left, y, "Labels:", width//2-INDENT_AMT, labels)
+
+	if resource_data['rtype'] in ["StatefulSet", "DaemonSet"] and resource_data["info"] != "None":
+		righty = draw_pairs(right, righty, "Status:", width//2-2*INDENT_AMT, info["status"])
+
+	# if status not in [{}, None] and status.get("conditions"):
+	# 	for i,item in enumerate(status["conditions"]):
+	# 		righty = draw_pairs(right, righty, "Condition " + str(i+1), width//2-2*INDENT_AMT, item)
+
+	return max(lefty, righty)
 
 def draw_ns(resource_data):
 	"""
@@ -282,15 +314,15 @@ def draw_ns(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
+	k8s_uid = resource_data["uid"]
+	status = "None"
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
-		status = info["status"] if info.get("status") and (info.get("status") != "None") else "None"
-		k8s_uid = info["k8s_uid"] if info.get("k8s_uid") and (info.get("k8s_uid") != "None") else "None"
-	else:
-		status = "None"
+		if info.get("status"):
+			status = info["status"]["phase"] if isinstance(info["status"], dict) else str(info["status"])
 
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + k8s_uid]
-	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + status]
+	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + str(status)]
 
 	return iterate_info(win, left, right, lfields, rfields, width)
 
@@ -303,8 +335,9 @@ def draw_app(resource_data):
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
-		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
-		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
+		labels = info["metadata"]["labels"] if info["metadata"].get("labels") else None
+		status = info["status"]
+
 	else:
 		labels, status = None, None
 
@@ -320,8 +353,6 @@ def draw_app(resource_data):
 	if labels is not None:
 		lefty = draw_pairs(left, lefty, "Labels:", width//2-2*INDENT_AMT, labels)
 
-	# righty = draw_pairs(right, righty, "Deployables: ", width//2-2*INDENT_AMT, info["deployables"].split(","))
-
 	return max(lefty,righty)
 
 def draw_pod(resource_data):
@@ -331,23 +362,35 @@ def draw_pod(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
+	host_ip, phase, pod_ip, ready, restarts, status = "None", "None", "None", "None", "None", "None"
+
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
-		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
-		owner_refs = info["owner_refs"][0] if info.get("owner_refs") and (info.get("owner_refs") != "None") else None
-		host_ip = info["host_ip"] if info.get("host_ip") and (info.get("host_ip") != None) else "None"
-		phase = info["phase"] if info.get("phase") and (info.get("phase") != None) else "None"
-		pod_ip = info["pod_ip"] if info.get("pod_ip") and (info.get("pod_ip") != None) else "None"
-		ready = info["ready"] if info.get("ready") and (info.get("ready") != None) else "None"
-		restarts = info["restarts"] if info.get("restarts") and (info.get("restarts") != None) else "None"
-		container_count = info["container_count"] if info.get("container_count") and (info.get("container_count") != None) else "None"
-		pod_metrics = info["pod_metrics"]
-		container_metrics = info["container_metrics"]
-	else:
-		labels, owner_refs, host_ip, phase, pod_ip, ready, restarts, container_count = None, None, "None", "None", "None", "None", "None", "None"
+		if info.get("metadata") is not None:
+			md = info.get("metadata")
+			labels = info["metadata"]["labels"] if info["metadata"].get("labels") else None
+			owner_refs = info["metadata"]["owner_references"][0] if info["metadata"].get("owner_references") else None
 
+		if info.get("status") is not None:
+			status = info.get("status")
+			host_ip = status["host_ip"] if status.get("host_ip") else "None"
+			phase = status["phase"] if status.get("phase") else "None"
+			pod_ip = status["pod_ip"] if status.get("pod_ip") else "None"
+			container_statuses = status.get("container_statuses")
+			if container_statuses is not None:
+				ready, restarts = 0, 0
+				container_count = len(container_statuses)
+				for c in container_statuses:
+					ready += c["ready"]
+					restarts += c["restart_count"]
+				ready = str(ready)
+				restarts = str(restarts)
+				container_count = str(container_count)
+				ready = ready + "/" + container_count
+
+	status = resource_data['sev_reason']
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"], "PodIP: " + pod_ip, "Node/HostIP: " + host_ip]
-	rfields = ["Ready: " + ready, "Restarts: " + restarts, "Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + phase]
+	rfields = ["Ready: " + ready, "Restarts: " + restarts, "Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + status]
 
 	if resource_data.get("application"):
 		lfields.append("Application: " + resource_data["application"])
@@ -364,6 +407,8 @@ def draw_pod(resource_data):
 	y = max(lefty,righty) + 3
 	win.addstr(y + 1, INDENT_AMT, "Compute Resources", curses.A_BOLD)
 	y += 3
+
+	pod_metrics, container_metrics = metrics.aggregate_pod_metrics(resource_data["cluster"], resource_data["namespace"], resource_data["name"])
 
 	if container_metrics is None:
 		win.addstr(y, INDENT_AMT, "Could not retrieve pod/container data")
@@ -395,13 +440,14 @@ def draw_cluster(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
+	status = None
 	if resource_data["info"] != "None":
-		info = json.loads(resource_data["info"])
-		status = info["status"] if info.get("status") and (info.get("status") != "None") else None
-		labels = info["labels"] if info.get("labels") and (info.get("labels") != "None") else None
-		remote_name = info["remote_name"]
-		remote_namespace = info["remote_namespace"]
-		k8s_uid = info["k8s_uid"]
+		mcm_cluster = json.loads(resource_data["info"])
+		status = mcm_cluster["status"] if mcm_cluster.get("status") else None
+		labels = mcm_cluster["metadata"]["labels"] if mcm_cluster["metadata"].get("labels") else None
+		remote_name = mcm_cluster["metadata"]["name"] if mcm_cluster["metadata"].get("name") else "None"
+		remote_namespace = mcm_cluster["metadata"]["namespace"] if mcm_cluster["metadata"].get("namespace") else "None"
+		k8s_uid = mcm_cluster["metadata"]["uid"] if mcm_cluster["metadata"].get("uid") else "None"
 
 		lfields = ["Local Cluster Name: " + resource_data["cluster"], "UID: " + k8s_uid, "Remote Cluster Name: " + remote_name, "Namespace on Hub: " + remote_namespace]
 		rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"] ]
