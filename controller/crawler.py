@@ -13,6 +13,11 @@ import cluster_mode_backend as cmb
 import app_mode_backend as amb
 import errors_backend as eb
 
+print("Getting access to db...")
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'controller', 'webserver'))
+from app import db
+from app.models import Resource, Edge
+
 print("Loading kube config...")
 k8s_config.load_kube_config()
 k8s_config.update_available_clusters()
@@ -45,6 +50,8 @@ def load_all() -> None:
 	print("\nStarting a round of load-all. Strap yourself in, astronaut.")
 
 	# insert all clusters into the database
+	stale_clusters = Resource.query.filter(Resource.rtype=="Cluster").all()
+	stale_cdict = { c.name: c for c in stale_clusters }
 	cluster_names = k8s_config.all_cluster_names()
 	mcm_clusters = cmb.mcm_clusters(cluster_names)
 	for cname in cluster_names:
@@ -57,6 +64,11 @@ def load_all() -> None:
 		else:
 			cluster_data = {"uid": cname, "rtype": "Cluster", "name": cname,
 							"cluster": cname, "cluster_path": "/root/"}
+
+		# remove cluster from running list of stale clusters
+		if cname in stale_cdict.keys():
+			stale_cdict.pop(cname)
+
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(cname), data=cluster_data)
 
 		# find all namespaces under this cluster and add it
@@ -66,13 +78,25 @@ def load_all() -> None:
 			ns.metadata.cluster_name = cname
 		all_nss += nss
 
+	# remove all stale clusters, descendants, and associated edges
+	# i.e. clusters that were in the db but that we didn't find
+	for cname in stale_cdict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(cname))
+
+		# remove any apps that were defined in the cluster
+		cluster_apps = Resource.query.filter(Resource.rtype=="Application" and Resource.uid.like(cname + "%")).all()
+		for capp in cluster_apps:
+			requests.delete('http://127.0.0.1:5000/resource/{}'.format(capp.uid))
+
 	print("Wrote %d clusters and found all child namespaces in %d seconds." % (len(cluster_names), time.time() - split_start))
 
 
 	# insert all applications into the database
 	split_start = time.time()
+	stale_apps = Resource.query.filter(Resource.rtype == "Application").all()
+	stale_adict = { app.uid: app for app in stale_apps }
 	apps = amb.all_applications()
-	for app in apps:
+	for app in apps:	
 		md = app["metadata"]
 		name, cname, ns, k8s_uid = md["name"], md["cluster_name"], md["namespace"], md["uid"]
 		app_uid = cname + "_" + k8s_uid
@@ -90,11 +114,21 @@ def load_all() -> None:
 			dpb["metadata"]["app_uid"] = app_uid
 		all_dpbs += deployables
 
+		# remove this app from running list of stale apps
+		if app_uid in stale_adict.keys():
+			stale_adict.pop(app_uid)
+
+	# remove all stale apps, descendants, and associated edges
+	for app_uid in stale_adict:
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(app_uid))
+
 	print("Wrote %d applications and found all child deployables in %d seconds." % (len(apps), time.time() - split_start))
 
 
 	# insert all namespaces and corresponding edges into the database
 	split_start = time.time()
+	stale_nss = Resource.query.filter(Resource.rtype == "Namespace").all()
+	stale_nsdict = { ns.uid: ns for ns in stale_nss }
 	for ns in all_nss:
 		cname = ns.metadata.cluster_name
 		ns_uid = cname + "_" + ns.metadata.uid
@@ -106,6 +140,10 @@ def load_all() -> None:
 		ns_edge = {"start_uid": cname, "end_uid": ns_uid, "relation": "Cluster<-Namespace"}
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(ns_uid), data=ns_resource)
 		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(cname, ns_uid), data=ns_edge)
+
+		# remove this ns from list of stale namespaces
+		if ns_uid in stale_nsdict.keys():
+			stale_nsdict.pop(ns_uid)
 
 		# find all deployments under this namespace and add it to the running
 		# list of all deployments (all_deploys)
@@ -139,11 +177,17 @@ def load_all() -> None:
 			sset.metadata.ns_uid = ns_uid
 		all_ssets += ssets
 
+	# remove all stale namespaces, their descendants and associated edges
+	for sns_uid in stale_nsdict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(sns_uid))
+
 	print("Wrote %d namespaces and found child deployments, services, daemonsets and statefulsets in %d seconds." % (len(all_nss), time.time() - split_start))
 
 
 	# insert all deployables and corresponding edges into the database
 	split_start = time.time()
+	stale_dpbs = Resource.query.filter(Resource.rtype == "Deployable").all()
+	stale_dpb_dict = { dpb.uid: dpb for dpb in stale_dpbs }
 	for dpb in all_dpbs:
 		md = dpb["metadata"]
 		app_name, app_uid = md["app_name"], md["app_uid"]
@@ -157,10 +201,21 @@ def load_all() -> None:
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(dpb_uid), data=dpb_resource)
 		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(app_uid, dpb_uid), data=dpb_edge)
 
+		# remove this deployable from the list of stale deployables
+		if dpb_uid in stale_dpb_dict.keys():
+			stale_dpb_dict.pop(dpb_uid)
+
+	# remove all stale deployables, their descendants and associated edges
+	for dpb_uid in stale_dpb_dict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(dpb_uid))
+
 	print("Wrote %d deployables in %d seconds." % (len(all_dpbs), time.time() - split_start ))
+
 
 	# insert all deployments and corresponding edges into the database
 	split_start = time.time()
+	stale_deploys = Resource.query.filter(Resource.rtype == "Deployment").all()
+	stale_deploy_dict = { deploy.uid: deploy for deploy in stale_deploys }
 	for deploy in all_deploys:
 		cname = deploy.metadata.cluster_name
 		ns_uid = deploy.metadata.ns_uid
@@ -172,7 +227,7 @@ def load_all() -> None:
 						"cluster_path": deploy_path, "info": to_json(deploy)}
 		deploy_edge = {"start_uid": ns_uid, "end_uid": deploy_uid, "relation": "Namespace<-Deployment"}
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(deploy_uid), data=deploy_resource)
-		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(ns_uid, deploy_uid), data=deploy_edge)
+		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(ns_uid, deploy_uid), data=deploy_edge)	
 
 		# find all pods being managed by this deployment and add them to the list of all pods (all_pods)
 		pods = cmb.deployment_pods(cluster_name=cname, namespace=deploy.metadata.namespace, deploy_name=deploy.metadata.name)
@@ -183,11 +238,21 @@ def load_all() -> None:
 			pod.metadata.parent_type = "Deployment"
 		all_pods += pods
 
+		# remove this deployment from the list of stale deployments
+		if deploy_uid in stale_deploy_dict.keys():
+			stale_deploy_dict.pop(deploy_uid)
+
+	# remove all stale deployments, their descendants and associated edges
+	for deploy_uid in stale_deploy_dict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(deploy_uid))
+
 	print("Wrote %d deployments and found managed pods in %d seconds." % (len(all_deploys), time.time() - split_start))
 
 
 	# insert all services and corresponding edges into the database
 	split_start = time.time()
+	stale_svcs = Resource.query.filter(Resource.rtype == "Service").all()
+	stale_svc_dict = { svc.uid: svc for svc in stale_svcs }
 	for svc in all_svcs:
 		cname = svc.metadata.cluster_name
 		ns_uid = svc.metadata.ns_uid
@@ -210,10 +275,21 @@ def load_all() -> None:
 			pod.metadata.parent_type = "Service"
 		all_pods += pods
 
+		# remove this service from the list of stale services
+		if svc_uid in stale_svc_dict.keys():
+			stale_svc_dict.pop(svc_uid)
+
+	# remove all stale services, their descendants and associated edges
+	for svc_uid in stale_svc_dict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(svc_uid))
+
 	print("Wrote %d services and found selected pods in %d seconds." % (len(all_svcs), time.time() - split_start))
 
 
 	# insert all daemonsets and corresponding edges into the database
+	split_start = time.time()
+	stale_dsets = Resource.query.filter(Resource.rtype == "DaemonSet").all()
+	stale_dset_dict = { dset.uid: dset for dset in stale_dsets }
 	for dset in all_dsets:
 		cname = dset.metadata.cluster_name
 		ns_uid = dset.metadata.ns_uid
@@ -236,11 +312,21 @@ def load_all() -> None:
 			pod.metadata.parent_type = "DaemonSet"
 		all_pods += pods
 
+		# remove this daemonset from the list of stale daemonsets
+		if dset_uid in stale_dset_dict.keys():
+			stale_dset_dict.pop(dset_uid)
+
+	# remove all stale daemonsets, their descendants and associated edges
+	for dset_uid in stale_dset_dict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(dset_uid))
+
 	print("Wrote %d daemonsets and found managed pods in %d seconds." % (len(all_dsets), time.time() - split_start))
 
 
 	# insert all stateful sets and corresponding edges into the database
 	split_start = time.time()
+	stale_ssets = Resource.query.filter(Resource.rtype == "StatefulSet").all()
+	stale_sset_dict = { sset.uid: sset for sset in stale_ssets }
 	for sset in all_ssets:
 		cname = sset.metadata.cluster_name
 		ns_uid = sset.metadata.ns_uid
@@ -263,11 +349,21 @@ def load_all() -> None:
 			pod.metadata.parent_type = "StatefulSet"
 		all_pods += pods
 
+		# remove this stateful set from the list of stale statefulsets
+		if sset_uid in stale_sset_dict.keys():
+			stale_sset_dict.pop(sset_uid)
+
+	# remove all stale statefulsets, their descendants and associated edges
+	for sset_uid in stale_sset_dict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(sset_uid))
+
 	print("Wrote %d statefulsets and found managed pods in %d seconds." % (len(all_ssets), time.time() - split_start))
 
 
 	# insert all pods and corresponding edges into the database
 	split_start = time.time()
+	stale_pods = Resource.query.filter(Resource.rtype == "Pod").all()
+	stale_pod_dict = { pod.uid: pod for pod in stale_pods }
 	for pod in all_pods:
 		cname = pod.metadata.cluster_name
 		ns_uid = pod.metadata.ns_uid
@@ -288,8 +384,15 @@ def load_all() -> None:
 		pod_edge = {"start_uid": parent_uid, "end_uid": pod_uid, "relation": parent_type + "<-Pod"}
 		requests.post('http://127.0.0.1:5000/edge/{}/{}'.format(parent_uid, pod_uid), data=pod_edge)
 
-	print("Wrote %d pods in %d seconds." % (len(all_pods), time.time() - split_start))
+		# remove this pod from the list of stale pods
+		if pod_uid in stale_pod_dict.keys():
+			stale_pod_dict.pop(pod_uid)
 
+	# remove all stale pods and associated edges
+	for pod_uid in stale_pod_dict.keys():
+		requests.delete('http://127.0.0.1:5000/resource/{}'.format(pod_uid))
+
+	print("Wrote %d pods in %d seconds." % (len(all_pods), time.time() - split_start))
 
 	# create edges between deployables and their resources
 	split_start = time.time()

@@ -117,7 +117,7 @@ def start(mode):
 			created_at = parse(md["creationTimestamp"])
 
 			data = { "uid": app_uid, "created_at": created_at, "rtype": "Application",
-							"name": app_name, "cluster": cluster, "namespace": app_ns, "application": app_name,
+							"name": app_name, "cluster": app_cluster, "namespace": app_ns, "application": app_name,
 								"app_path": "/root/", "info": json.dumps(app)}
 
 			requests.post('http://127.0.0.1:5000/resource/{}'.format(app_uid), data=data)
@@ -163,10 +163,23 @@ def resource(uid):
 		resource = db.session.query(Resource).filter(Resource.uid == uid).first()
 		return jsonify(data=row_to_dict(resource))
 	elif request.method == 'DELETE':
-		db.session.query(Resource).filter(Resource.uid == uid).delete()
-		db.session.query(Edge).filter(Edge.start_uid == uid or Edge.end_uid == uid).delete()
+
+		# Removes resource with given uid, all descendants, and associated edges
+		to_delete = [ uid ]
+		while len(to_delete) > 0:
+			# delete the resource in question
+			curr_uid = to_delete.pop()
+			db.session.query(Resource).filter(Resource.uid == curr_uid).delete()
+
+			# find all children
+			outgoing_edges = db.session.query(Edge).filter(Edge.start_uid == curr_uid).all()
+			child_uids = [ edge.end_uid for edge in outgoing_edges ]
+			to_delete += child_uids
+
+			# removes edges associated with this resource
+			db.session.query(Edge).filter(Edge.start_uid == curr_uid or Edge.end_uid == curr_uid).delete()
 		db.session.commit()
-		return "Resource and associated edges deleted"
+		return "Resource, descendants, and associated edges deleted"
 	else:
 		data = request.form.to_dict()
 
@@ -325,11 +338,6 @@ def edge(start_uid, end_uid):
 		db.session.add(e1)
 		db.session.commit()
 		return "Edge saved"
-	elif request.method == 'DELETE':
-		db.session.query(Resource).filter(Edge.start_uid == start_uid and Edge.end_uid == end_uid).delete()
-		db.session.commit()
-		return "Edge deleted"
-
 
 
 @app.route('/mode/app/switch/<uid>')
