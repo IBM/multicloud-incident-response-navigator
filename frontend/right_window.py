@@ -9,7 +9,7 @@ import metrics
 
 this = sys.modules[__name__]
 
-INDENT_AMT = 4 # horizontal indent amount
+INDENT_AMT = 5 # horizontal indent amount
 
 status = ""
 
@@ -261,14 +261,12 @@ def draw_work(resource_data):
 		if (resource_data['rtype'] == 'Deployment'):
 			updated = str(status["updated_replicas"]) if status.get("updated_replicas") else "0"
 			available = str(status["available_replicas"]) if status.get("available_replicas") else "0"
-			unavailable = str(status["unavailable_replicas"]) if status.get("unavailable_replicas") else "0"
 			ready = str(status["ready_replicas"]) if status.get("ready_replicas") else "0"
 			reps = str(status["replicas"]) if status.get("replicas")  else "0"
 
 		elif (resource_data['rtype'] == 'DaemonSet'):
 			updated = str(status["updated_number_scheduled"]) if status.get("updated_number_scheduled") else "0"
 			available = str(status["number_available"]) if status.get("number_available")else "0"
-			unavailable = str(status["number_unavailable"]) if status.get("number_unavailable") else "0"
 			ready = str(status["number_ready"]) if status.get("number_ready") else "0"
 			reps = str(status["desired_number_scheduled"]) if status.get("desired_number_scheduled")  else "0"
 
@@ -362,31 +360,13 @@ def draw_pod(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
-	host_ip, phase, pod_ip, ready, restarts, status = "None", "None", "None", "None", "None", "None"
+	host_ip, pod_ip, ready, restarts = parse_pod_status(resource_data)
 
 	if resource_data["info"] != "None":
 		info = json.loads(resource_data["info"])
 		if info.get("metadata") is not None:
-			md = info.get("metadata")
 			labels = info["metadata"]["labels"] if info["metadata"].get("labels") else None
 			owner_refs = info["metadata"]["owner_references"][0] if info["metadata"].get("owner_references") else None
-
-		if info.get("status") is not None:
-			status = info.get("status")
-			host_ip = status["host_ip"] if status.get("host_ip") else "None"
-			phase = status["phase"] if status.get("phase") else "None"
-			pod_ip = status["pod_ip"] if status.get("pod_ip") else "None"
-			container_statuses = status.get("container_statuses")
-			if container_statuses is not None:
-				ready, restarts = 0, 0
-				container_count = len(container_statuses)
-				for c in container_statuses:
-					ready += c["ready"]
-					restarts += c["restart_count"]
-				ready = str(ready)
-				restarts = str(restarts)
-				container_count = str(container_count)
-				ready = ready + "/" + container_count
 
 	status = resource_data['sev_reason']
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"], "PodIP: " + pod_ip, "Node/HostIP: " + host_ip]
@@ -433,6 +413,32 @@ def draw_pod(resource_data):
 
 	return y + 3
 
+def parse_pod_status(pod_dict):
+	"""
+	Using dictionary with db data for a given pod, returns information about pod status
+	:param pod_dict: dictionary form of the pod resource in the database
+	:return: (all strings) host_ip, pod_ip, ready, restarts
+	"""
+	host_ip, pod_ip, ready, restarts= "None", "None", "None", "None"
+	if pod_dict["info"] != "None":
+		info = json.loads(pod_dict["info"])
+		if info.get("status") is not None:
+			status = info.get("status")
+			host_ip = status["host_ip"] if status.get("host_ip") else "None"
+			pod_ip = status["pod_ip"] if status.get("pod_ip") else "None"
+			container_statuses = status.get("container_statuses")
+			if container_statuses is not None:
+				ready, restarts = 0, 0
+				container_count = len(container_statuses)
+				for c in container_statuses:
+					ready += c["ready"]
+					restarts += c["restart_count"]
+				ready = str(ready)
+				restarts = str(restarts)
+				container_count = str(container_count)
+				ready = ready + "/" + container_count
+	return host_ip, pod_ip, ready, restarts
+
 def draw_cluster(resource_data):
 	"""
 	fills in left and right windows will info relevant to cluster
@@ -440,7 +446,6 @@ def draw_cluster(resource_data):
 	:return: y coordinate to start drawing related resources on
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
-	status = None
 	if resource_data["info"] != "None":
 		mcm_cluster = json.loads(resource_data["info"])
 		status = mcm_cluster["status"] if mcm_cluster.get("status") else None
@@ -528,7 +533,6 @@ def iterate_indented_pairs(win, start_y, start_x, pairs, alloted_width, indent =
 			lines = lines[1:]
 			start_y += 1
 			for line in lines:
-				# win.addstr(start_y, start_x+(INDENT_AMT*indent), line)
 				win.addstr(start_y, start_x+(INDENT_AMT*indent), line)
 				start_y += 1
 		else:

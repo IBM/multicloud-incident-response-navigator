@@ -5,7 +5,7 @@ import left_window as lwin
 import top_window as twin
 import search_bar as sb
 import right_window as rwin
-import sys, requests
+import sys, requests, json
 from typing import Dict, Tuple
 import copy
 
@@ -51,13 +51,13 @@ def run_skipper(stdscr):
 	panel_width = width//2
 
 	# initialize and draw windows
-	lwin.init_win(stdscr, height=panel_height, width=width//2, y=top_height, x=0)
+	lwin.init_win(stdscr, height=panel_height, width=panel_width, y=top_height, x=0)
 	rwin.init(stdscr, panel_height, panel_width, top_height)
 
 	if len(data['table_items']) > 0:
 		table_data = {	"mode": START_MODE,
 						"col_names": ["kind", "name"],
-						"col_widths": [20, 60],
+						"col_widths": lwin.get_column_widths([1/6, 5/6]),
 						"table": [[t_item['rtype'], t_item['name']] for t_item in data['table_items']],
 						"row_selector": data['index'],
 						"start_y": 0,
@@ -65,14 +65,15 @@ def run_skipper(stdscr):
 						"path_rtypes": data['path_rtypes'],
 						"path_uids": data['path_uids'],
 						"table_uids": [t_item['uid'] for t_item in data['table_items']],
-						"has_children": data['has_children']
+						"has_children": data['has_children'],
+						"sev": [t_item['sev_measure'] for t_item in data['table_items']]
 						}
 		resource_by_uid = { item['uid'] : item for item in data['table_items'] }
 		current_uid = table_data['table_uids'][table_data['row_selector']]
 	else:
 		table_data = {	"mode": START_MODE,
 						"col_names": ["kind", "name"],
-						"col_widths": [20,60],
+						"col_widths": lwin.get_column_widths([1/6, 5/6]),
 						"table": [],
 						"row_selector": 0,
 						"start_y": 0,
@@ -80,7 +81,8 @@ def run_skipper(stdscr):
 						"path_rtypes": [],
 						"path_uids": [],
 						"table_uids": [],
-						"has_children": []
+						"has_children": [],
+						"sev": []
 						}
 		resource_by_uid = { "empty": None }
 		current_uid = "empty"
@@ -96,7 +98,7 @@ def run_skipper(stdscr):
 					"current_uid": "empty",				# so that it can be restored when user re-enters query mode
 					"table_data": {"mode": "query",
 							"col_names" : ["kind", "name"],
-							"col_widths" : [20, 60],
+							"col_widths" : lwin.get_column_widths([1/6, 5/6]),
 							"table" : [],
 							"row_selector" : 0,
 							"start_y" : 0,
@@ -104,7 +106,8 @@ def run_skipper(stdscr):
 							"path_rtypes" : [],
 							"path_uids" : [],
 							"table_uids" : [],
-							"has_children": []}
+							"has_children": [],
+							"sev": []}
 				}
 
 	fmodes = { ord("y") : "yaml", ord("l") : "logs", ord("s") : "summary", ord("e") : "events"}
@@ -263,7 +266,7 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 				current_uid = list(resource_by_uid.keys())[0]
 				table_data = {"mode": "query",
 							"col_names" : ["kind", "name"],
-							"col_widths" : [20, 60],
+							"col_widths" : lwin.get_column_widths([1/6, 5/6]),
 							"table" : rows,
 							"row_selector" : 0,
 							"start_y" : 0,
@@ -271,13 +274,26 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 							"path_rtypes" : [],
 							"path_uids" : [],
 							"table_uids" : list(resource_by_uid.keys()),
-							"has_children": [True] * len(results)}
+							"has_children": [True] * len(results),
+							"sev": [r['sev_measure'] for r in results]}
+
+				# add additional cols if all pods in table
+				is_pod = [res[0] == 'Pod' for res in table_data['table']]
+				if all(is_pod):
+					table_data["col_names"] = ["kind", "name", "", "ready", "restarts", "status"]
+					table_data["col_widths"] = lwin.get_column_widths([1/6, 1-1/6-40/lwin.tr_text_width, 3/lwin.tr_text_width, 8/lwin.tr_text_width, 11/lwin.tr_text_width, 18/lwin.tr_text_width])
+					for i, pod in enumerate(table_data['table_uids']):
+						host_ip, pod_ip, ready, restarts = rwin.parse_pod_status(resource_by_uid[pod])
+						ready = "-" if ready == "None" else ready
+						restarts = "-" if restarts == "None" else restarts
+						table_data['table'][i].extend(["", ready, restarts, resource_by_uid[pod]["sev_reason"]])
+
 			else:
 				resource_by_uid = {"empty": None}
 				current_uid  = "empty"
 				table_data = {"mode": "query",
 							"col_names" : ["kind", "name"],
-							"col_widths" : [20, 60],
+							"col_widths" : lwin.get_column_widths([1/6, 5/6]),
 							"table" : [["", "No results found."]],
 							"row_selector" : 0,
 							"start_y" : 0,
@@ -285,7 +301,8 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 							"path_rtypes" : [],
 							"path_uids" : [],
 							"table_uids" : ["empty"],
-							"has_children": [True]}
+							"has_children": [True],
+							"sev": ["0"]}
 
 			# draw right window
 			rwin.draw(ftype, resource_by_uid[current_uid])
@@ -309,24 +326,36 @@ def update(mode, table_data, data, twin, lwin, ftype, panel_side):
 	table_data["mode"] = mode
 	if mode == 'app' or mode == 'cluster':
 		table_data["col_names"] = ["kind", "name"]
-		table_data["col_widths"] = [20, 60]
+		table_data["col_widths"] = lwin.get_column_widths([1/6, 5/6])
 		table_data['row_selector'] = data['index']
 		table_data['path_names'] = data['path_names']
 		table_data['path_rtypes'] = data['path_rtypes']
 		table_data['path_uids'] = data['path_uids']
 		table_data['table'] = [[t_item['rtype'], t_item['name']] for t_item in data['table_items']]
-		table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
 		table_data["has_children"] = data['has_children']
-		resource_by_uid = {item['uid']: item for item in data['table_items']}
+
 	elif mode == 'anomaly':
 		# each item in data["table_items"] is (skipper_uid, type, name, reason, message)
 		table_data["col_names"] = ["kind", "name", "reason"]
-		table_data["col_widths"] = [15, 60, 10]
+		table_data["col_widths"] = lwin.get_column_widths([1/6, 2/3, 1/6])
 		table_data['row_selector'] = 0
-		table_data['table'] = [[t_item[1], t_item[2], t_item[3]] for t_item in data['table_items']]
-		table_data["table_uids"] = [t_item[0] for t_item in data['table_items']]
+		table_data['table'] = [[t_item['rtype'], t_item['name'], t_item['sev_reason']] for t_item in data['table_items']]
 		table_data["has_children"] = [True] * len(data['table_items'])
-		resource_by_uid = {item[0]: load("sort", twin, uid=item[0]) for item in data['table_items']}
+
+	table_data["table_uids"] = [t_item['uid'] for t_item in data['table_items']]
+	table_data["sev"] = [t_item['sev_measure'] for t_item in data['table_items']]
+	resource_by_uid = {item['uid']: item for item in data['table_items']}
+
+	# add additional cols if all pods in table
+	is_pod = [res[0] == 'Pod' for res in table_data['table']]
+	if all(is_pod):
+		table_data["col_names"] = ["kind", "name", "", "ready", "restarts", "status"]
+		table_data["col_widths"] = lwin.get_column_widths([1/6, 1-1/6-40/lwin.tr_text_width, 3/lwin.tr_text_width, 8/lwin.tr_text_width, 11/lwin.tr_text_width, 18/lwin.tr_text_width])
+		for i, pod in enumerate(table_data['table_uids']):
+			host_ip, pod_ip, ready, restarts = rwin.parse_pod_status(resource_by_uid[pod])
+			ready =  "-" if ready == "None" else ready
+			restarts = "-" if restarts == "None" else restarts
+			table_data['table'][i] = ["Pod", resource_by_uid[pod]['name'], "", ready, restarts, resource_by_uid[pod]['sev_reason']]
 
 	current_uid = table_data['table_uids'][table_data['row_selector']]
 	twin.draw(mode=mode, ftype=ftype, panel=panel_side)

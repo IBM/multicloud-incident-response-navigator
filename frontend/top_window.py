@@ -16,6 +16,7 @@ this = sys.modules[__name__]
 
 mode = "cluster"
 window = None		# _curses.window object that represents that top banner
+height, width = 0,0
 
 LEFT_PADDING = 5
 TOP_PADDING = 1
@@ -41,6 +42,7 @@ def init_win(stdscr, height: int, width: int, y: int, x: int, has_apps: bool) ->
 	"""
 
 	this.window = curses.newwin(height,width, y,x)
+	this.height, this.width = height, width
 	this.has_apps = has_apps
 
 def init_load(mode) -> None:
@@ -95,8 +97,8 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 
 
 	# calculate starting position for nav keybinds
-	keybinds_x = max(len(line) for line in skipper_figlet_lines) + this.LEFT_PADDING * 4
-	keybinds_y = this.TOP_PADDING + 1
+	keybinds_x = max(len(line) for line in skipper_figlet_lines) + this.LEFT_PADDING * 3
+	keybinds_y = this.TOP_PADDING + 2
 
 	# draw nav keybinds
 	y = keybinds_y
@@ -125,7 +127,7 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 	# calculate starting position for resource keybinds
 	# draw the phrase "resource key binds"
 	y = keybinds_y
-	x += max(len(kb) for kb in mode_keybinds.values()) + 2 * this.LEFT_PADDING
+	x = this.width // 2 + this.LEFT_PADDING
 	this.window.addstr(y, x, "resource key binds")
 
 	# draw resource keybinds

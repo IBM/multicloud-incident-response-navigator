@@ -41,6 +41,7 @@ col_widths = []			# width of each column
 table = []				# rows of data to be displayed in table window (curses.pad)
 table_uids = []			# uids for each resource in the table
 has_children = []		# boolean (has children or not) for each resource in table
+sev = []				# list of sev measures for each item in table
 row_selector = 0		# which row of the table should be highlighted
 
 bc_height = 4			# height of the breadcrumbs window
@@ -93,6 +94,7 @@ def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
 	this.end_x, this.end_y = x + width, h - 1	# set x,y of lower-right corner of the left window
 	this.bcx, this.bcy = 0,0					# set x,y of upper-left corner of breadcrumbs window
 
+	this.tr_text_width = this.width - this.LEFT_PADDING
 
 def set_contents(mode: str,
 					col_names: List[str],
@@ -104,7 +106,8 @@ def set_contents(mode: str,
 					path_rtypes: List[str],
 				 	path_uids: List[str],
 				 	table_uids: List[str],
-				 	has_children: List[bool]) -> None:
+				 	has_children: List[bool],
+               		sev: List[int]) -> None:
 	"""
 	Sets relevant content variables based on given arguments.
 
@@ -147,6 +150,7 @@ def set_contents(mode: str,
 	this.path_uids = path_uids
 	this.table_uids = table_uids
 	this.has_children = has_children
+	this.sev = sev
 
 	if mode in ["app", "cluster"]:
 		this.thx, this.thy = 0,this.bc_height	# relative x,y inside left_window
@@ -175,9 +179,9 @@ def draw_bc_window(bc_window) -> None:
 	# returns left and right padding needed to center str2 under str1
 	def padding(str1, str2):
 		if len(str2) >= len(str1):
-			return (0,0)
+			return (0, 0)
 		left_pad = (len(str1) - len(str2)) // 2
-		right_pad = len(str1)  - len(str2) - left_pad
+		right_pad = len(str1) - len(str2) - left_pad
 		return (left_pad, right_pad)
 
 	# edge case: name is shorter than resource type
@@ -218,8 +222,7 @@ def draw_bc_window(bc_window) -> None:
 	bc_window.addstr(1, this.LEFT_PADDING, path_str)
 	bc_window.addstr(2, this.LEFT_PADDING, type_str)
 
-
-def draw_tr_window(tr_window, row: List[str], grey_out=False) -> None:
+def draw_tr_window(tr_window, row: List[str], grey_out=False, sev=None) -> None:
 	"""
 	Formats and draws row in the given window.
 
@@ -238,20 +241,32 @@ def draw_tr_window(tr_window, row: List[str], grey_out=False) -> None:
 
 	# pads and truncates the given string, as necessary, to fit col_width
 	def fmt_str(string, col_width):
-		if len(string) > col_width:
+		if len(string) > col_width - 1:
 			return string[:col_width - 4] + "... "
 		return string + " " * (col_width - len(string))
 
+
 	# generate a python format string based on col widths (this.col_widths)
 	row_str = ""
-	for entry, width in zip(row, this.col_widths):
+	status_start = None
+	for i, (entry, width) in enumerate(zip(row, this.col_widths)):
+		if i == 5:
+			status_start = len(row_str)
 		row_str += fmt_str(entry, width)
 
 	# draw the string inside the table row window
 	if curses.can_change_color() and grey_out:
 		tr_window.addstr(1, this.LEFT_PADDING, row_str, curses.color_pair(2))
 	else:
-		tr_window.addstr(1, this.LEFT_PADDING, row_str)
+		# color status part of string
+		if status_start is not None and sev is not None:
+			tr_window.addstr(1, this.LEFT_PADDING, row_str[:status_start])
+			if sev == "0":
+				tr_window.addstr(1, this.LEFT_PADDING + status_start, row_str[status_start:], curses.color_pair(4))
+			elif sev == "1":
+				tr_window.addstr(1, this.LEFT_PADDING + status_start, row_str[status_start:], curses.color_pair(5))
+		else:
+			tr_window.addstr(1, this.LEFT_PADDING, row_str)
 
 
 def draw_table_window(table_window) -> None:
@@ -273,7 +288,7 @@ def draw_table_window(table_window) -> None:
 
 	# Draw the row windows
 	for i, (entries, rowwin) in enumerate(row_windows):
-		draw_tr_window(rowwin, entries, grey_out=(not this.has_children[i] and entries[0] != 'Pod'))
+		draw_tr_window(rowwin, entries, grey_out=(not this.has_children[i] and entries[0] != 'Pod'), sev=this.sev[i])
 
 	# Highlight the row at index this.row_selector
 	# if there are any rows
@@ -351,3 +366,10 @@ def move_down():
 
 def get_selected_row():
 	return this.table[this.row_selector]
+
+def get_column_widths(multiplier_list):
+	# takes column width %s and returns list of corresponding col width raw values
+	col_width_list = []
+	for multiplier in multiplier_list:
+		col_width_list.append(int(multiplier*this.tr_text_width))
+	return col_width_list

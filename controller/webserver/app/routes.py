@@ -479,7 +479,7 @@ def get_errors():
 
 	anomalies = db.session.query(Resource).filter(Resource.sev_measure==1).all()
 	if len(anomalies) > 0:
-		return jsonify(table_items=[ (a.uid, a.rtype, a.name, a.sev_reason) for a in anomalies ])
+		return jsonify(table_items=[row_to_dict(a) for a in anomalies])
 
 	# resources = errors_backend.get_resources_with_bad_events()
 	table_rows, pods = eb.get_unhealthy_pods()
@@ -496,9 +496,8 @@ def get_errors():
 						 "sev_measure": 1, "sev_reason": pod.metadata.sev_reason, "info": to_json(pod)}
 		requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
 
-	return jsonify(table_items=table_rows)
-
-
+	anomalies = db.session.query(Resource).filter(Resource.sev_measure == 1).all()
+	return jsonify(table_items=[row_to_dict(a) for a in anomalies])
 
 @app.route('/view_resources')
 def view_resources():
@@ -539,6 +538,8 @@ def search(query: str):
 		else: # regular fuzzy search
 			results = results.filter(Resource.name.ilike("%" + query_part + "%"))
 
+	# sort by sev measure
+	results = results.order_by(Resource.sev_measure.desc())
 	return jsonify(results=[row_to_dict(r) for r in results])
 
 @app.route('/search/')
