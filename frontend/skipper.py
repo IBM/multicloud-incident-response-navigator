@@ -27,7 +27,7 @@ def run_skipper(stdscr):
 	height, width = stdscr.getmaxyx()
 
 	# if terminal size doesn't meet requirements
-	if height < 40 or width < 180:
+	if height < 40 or width < 178:
 		shs.terminal_size_reminder(stdscr)
 		return
 

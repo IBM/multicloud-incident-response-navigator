@@ -331,7 +331,7 @@ def draw() -> None:
 	elif this.row_selector * this.tr_height <= this.table_start_y - this.tr_height:
 		this.table_start_y -= this.tr_height
 	
-	table_window.refresh(this.table_start_y,0, this.table_y,this.table_x, this.end_y,this.end_x)
+	table_window.refresh(this.table_start_y,0, this.table_y,this.table_x, this.end_y - this.end_y % this.tr_height,this.end_x)
 
 	# draw search bar last so cursor stays in the bar
 	if this.mode == "query":
