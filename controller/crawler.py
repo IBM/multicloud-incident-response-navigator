@@ -1,9 +1,6 @@
 import os, sys
 import requests, json, time, yaml
-import sqlalchemy
 import kubernetes as k8s
-from datetime import datetime
-from copy import copy
 from dateutil.parser import parse
 
 print("Loading backend functions...")
@@ -15,7 +12,6 @@ import errors_backend as eb
 
 print("Getting access to db...")
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'controller', 'webserver'))
-from app import db
 from app.models import Resource, Edge
 
 print("Loading kube config...")
@@ -24,7 +20,6 @@ k8s_config.update_available_clusters()
 
 # For reference
 # {"uid", "created_at", "rtype", "name", "cluster", "namespace", "application", "app_path", "cluster_path", "sev_measure", "sev_reason", "info"}
-
 
 def load_all() -> None:
 	"""
@@ -90,7 +85,6 @@ def load_all() -> None:
 
 	print("Wrote %d clusters and found all child namespaces in %d seconds." % (len(cluster_names), time.time() - split_start))
 
-
 	# insert all applications into the database
 	split_start = time.time()
 	stale_apps = Resource.query.filter(Resource.rtype == "Application").all()
@@ -123,7 +117,6 @@ def load_all() -> None:
 		requests.delete('http://127.0.0.1:5000/resource/{}'.format(app_uid))
 
 	print("Wrote %d applications and found all child deployables in %d seconds." % (len(apps), time.time() - split_start))
-
 
 	# insert all namespaces and corresponding edges into the database
 	split_start = time.time()
@@ -183,7 +176,6 @@ def load_all() -> None:
 
 	print("Wrote %d namespaces and found child deployments, services, daemonsets and statefulsets in %d seconds." % (len(all_nss), time.time() - split_start))
 
-
 	# insert all deployables and corresponding edges into the database
 	split_start = time.time()
 	stale_dpbs = Resource.query.filter(Resource.rtype == "Deployable").all()
@@ -210,7 +202,6 @@ def load_all() -> None:
 		requests.delete('http://127.0.0.1:5000/resource/{}'.format(dpb_uid))
 
 	print("Wrote %d deployables in %d seconds." % (len(all_dpbs), time.time() - split_start ))
-
 
 	# insert all deployments and corresponding edges into the database
 	split_start = time.time()
@@ -248,7 +239,6 @@ def load_all() -> None:
 
 	print("Wrote %d deployments and found managed pods in %d seconds." % (len(all_deploys), time.time() - split_start))
 
-
 	# insert all services and corresponding edges into the database
 	split_start = time.time()
 	stale_svcs = Resource.query.filter(Resource.rtype == "Service").all()
@@ -284,7 +274,6 @@ def load_all() -> None:
 		requests.delete('http://127.0.0.1:5000/resource/{}'.format(svc_uid))
 
 	print("Wrote %d services and found selected pods in %d seconds." % (len(all_svcs), time.time() - split_start))
-
 
 	# insert all daemonsets and corresponding edges into the database
 	split_start = time.time()
@@ -322,7 +311,6 @@ def load_all() -> None:
 
 	print("Wrote %d daemonsets and found managed pods in %d seconds." % (len(all_dsets), time.time() - split_start))
 
-
 	# insert all stateful sets and corresponding edges into the database
 	split_start = time.time()
 	stale_ssets = Resource.query.filter(Resource.rtype == "StatefulSet").all()
@@ -358,7 +346,6 @@ def load_all() -> None:
 		requests.delete('http://127.0.0.1:5000/resource/{}'.format(sset_uid))
 
 	print("Wrote %d statefulsets and found managed pods in %d seconds." % (len(all_ssets), time.time() - split_start))
-
 
 	# insert all pods and corresponding edges into the database
 	split_start = time.time()
@@ -439,7 +426,6 @@ def load_all() -> None:
 	print("Updated app_paths and created app mode edges in %d seconds." % (time.time() - split_start))
 
 	print("Total time elapsed: {} secs".format(time.time()-start))
-
 
 if __name__ == "__main__":
 

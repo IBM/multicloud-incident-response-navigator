@@ -3,7 +3,7 @@ import datetime
 
 class Edge(db.Model):
 	id = db.Column(db.Integer, primary_key=True)
-	start_uid = db.Column(db.String(128), nullable=False) # format: <cluster_name>,uid (because uids unique to cluster)
+	start_uid = db.Column(db.String(128), nullable=False)
 	end_uid = db.Column(db.String(128), nullable = False)
 	relation = db.Column(db.String(128), nullable = False)
 	last_updated = db.Column(db.DateTime(timezone=True), default = datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
@@ -11,7 +11,7 @@ class Edge(db.Model):
 class Resource(db.Model):
 	uid = db.Column(db.String(512), unique=True, nullable = False, primary_key=True)
 	created_at = db.Column(db.DateTime(timezone=True))	# when k8s created the resource
-	last_updated = db.Column(db.DateTime(timezone=True), default = datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)	# when the row was last updated
+	last_updated = db.Column(db.DateTime(timezone=True), default = datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 	rtype = db.Column(db.String(128), nullable = False)
 	name = db.Column(db.String(256), nullable = False)
 	cluster = db.Column(db.String(128), nullable = False)

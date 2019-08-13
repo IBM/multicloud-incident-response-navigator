@@ -10,7 +10,6 @@ import curses, emojis
 import sys, time
 import skipper_helpers as shs
 
-
 # used to reference module variables
 this = sys.modules[__name__]
 
@@ -21,24 +20,17 @@ height, width = 0,0
 LEFT_PADDING = 5
 TOP_PADDING = 1
 
-
-def init_win(stdscr, height: int, width: int, y: int, x: int, has_apps: bool) -> None:
+def init_win(height: int, width: int, y: int, x: int, has_apps: bool) -> None:
 	"""
 	Initializes the top banner window based on the given parameters.
 	Also initializes top  right window for loading icon
 
-	Arguments:	(_curses.window) stdscr
-				(int) height
-					Desired height of the top window.
-				(int) width
-					Desired width of the top window.
-				(int) y
-					Y-coordinate of upper-left corner of top window.
-				(int) x
-					X-coordiante of upper-left corner of top window.
-				(bool) has_apps
-					True if the user manages applications
-	Returns:	None
+	:param (int) height: Desired height of the top window.
+	:param (int) width: Desired width of the top window.
+	:param (int) y: Y-coordinate of upper-left corner of top window.
+	:param (int) x: X-coordiante of upper-left corner of top window.
+	:param (bool) has_apps: True if the user manages applications
+	:return: None
 	"""
 
 	this.window = curses.newwin(height,width, y,x)
@@ -46,6 +38,9 @@ def init_win(stdscr, height: int, width: int, y: int, x: int, has_apps: bool) ->
 	this.has_apps = has_apps
 
 def init_load(mode) -> None:
+	"""
+	Create loading icon win to the right of the text of current mode
+	"""
 	offset = len("> " + mode + " mode ")
 	this.loading_icon_win = curses.newwin(2, 2, this.loading_y, this.loading_x + offset)
 
@@ -53,9 +48,9 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 	"""
 	Draws the top banner based on the given mode.
 
-	Arguments:	(str) mode
-				(str) resource file type for right window
-	Returns:	None
+	:param (str) mode
+	:param (str) resource file type for right window
+	:return: None
 	"""
 
 	this.window.erase()
@@ -94,7 +89,6 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 	else:
 		print("No valid mode could be found with name", mode + ".")
 		return
-
 
 	# calculate starting position for nav keybinds
 	keybinds_x = max(len(line) for line in skipper_figlet_lines) + this.LEFT_PADDING * 3
@@ -141,17 +135,18 @@ def draw(mode: str, ftype : str, panel : str) -> None:
 		y += 1
 	this.window.refresh()
 
-def load(sec : int) -> None:
-	this.start_loading()
-	time.sleep(sec)
-	this.stop_loading()
-
 def start_loading() -> None:
+	"""
+	Draw loading icon
+	"""
 	this.loading_icon_win.erase()
 	# refer to cheatsheet for more emojis https://www.webfx.com/tools/emoji-cheat-sheet/
 	this.loading_icon_win.addstr(0, 0, emojis.encode(':hourglass:'), curses.A_BLINK)
 	this.loading_icon_win.refresh()
 
 def stop_loading() -> None:
+	"""
+	Erase loading icon
+	"""
 	this.loading_icon_win.erase()
 	this.loading_icon_win.refresh()

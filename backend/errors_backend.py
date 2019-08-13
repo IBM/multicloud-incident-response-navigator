@@ -1,19 +1,18 @@
-import cluster_mode_backend as cmb
 from typing import Tuple
 import kubernetes as k8s
-import k8s_config
-import k8s_api
-import requests
-import metrics
-import json
+import k8s_config, k8s_api, cluster_mode_backend as cmb
 
 # used for type suggestions
 V1Pod = k8s.client.models.v1_pod.V1Pod
 
-# helper function that, given a V1Pod object, returns the sev_measure and status
 def pod_state(pod: V1Pod) -> Tuple[int, str]:
-    pod_ns = pod.metadata.namespace
-    pod_cluster = pod.metadata.cluster_name
+    """
+    Returns pod sev_measure and pod status
+
+    :param (V1Pod) pod: pod object
+    :return: ((int) sev_measure, 0 for good status, 1 for bad status,
+              (str) pod status, as shown in status column in kubectl get pods)
+    """
     containers = []
     for ct in pod.spec.containers:
         containers.append(ct.name)
@@ -78,21 +77,18 @@ def pod_state(pod: V1Pod) -> Tuple[int, str]:
     elif pod.metadata.deletion_timestamp != None:
         reason = "Terminating"
 
-    message = pod.status.message if pod.status.message != None else ''
-
-    # TODO will need to test with more data
     if reason not in ['Running','Succeeded','Completed']:
         return (1, reason)
     return (0, reason)
 
 def get_unhealthy_pods():
     """
-    (currently) gets unhealthy pods
-    :return: list of unhealthy pods, where each item is (skipper_uid, rtype, name, reason, message)
+    Gets unhealthy pods
+    (follows same logic as https://github.ibm.com/IBMPrivateCloud/search-collector/blob/master/pkg/transforms/pod.go)
 
-    follows https://github.ibm.com/IBMPrivateCloud/search-collector/blob/master/pkg/transforms/pod.go
+    :return: ((List(tuple)) skipper_uid, rtype, name, reason, message,
+              (List(V1Pod)) pod object)
     """
-
     bad_pods = []
     table_rows = []
     pod_list = []
@@ -174,7 +170,6 @@ def get_unhealthy_pods():
 
         message = pod.status.message if pod.status.message != None else ''
 
-        # TODO will need to test with more data
         if reason not in ['Running','Succeeded','Completed']:
             skipper_uid = pod_cluster + "_" + pod.metadata.uid
             pod.metadata.cluster_name = pod_cluster
@@ -183,49 +178,3 @@ def get_unhealthy_pods():
             table_rows.append((skipper_uid, 'Pod', pod.metadata.name, reason, message))
 
     return (table_rows, bad_pods)
-
-def get_resources_with_bad_events():
-    """
-    Goes through kubernetes events and gets resources with "bad" events, determined by me
-    https://github.com/kubernetes/kubernetes/blob/master/pkg/kubelet/events/event.go
-
-    :return: list of unhealthy resources, where each item is (skipper_uid, rtype, name, reason, message)
-    """
-
-    bad_resources = []
-    clusters = k8s_config.all_cluster_names()
-    for cluster in clusters:
-        api_client = k8s_api.api_client(cluster, "CoreV1Api")
-        namespaces = cmb.cluster_namespace_names(cluster)
-        for ns in namespaces:
-            events = api_client.list_namespaced_event(ns).items
-            for ev in events:
-                if ev.type == 'Warning' or ev.reason not in ['Created','Started',
-                                                             'Pulling','Pulled',
-                                                             'NodeReady','NodeSchedulable',
-                                                             'Starting',
-                                                             'VolumeResizeSuccessful','SuccessfulAttachVolume','SuccessfulMountVolume',
-                                                             'Rebooted',
-                                                             'Scheduled', 'Schedule',
-                                                             'ScalingReplicaSet',
-                                                             'SuccessfulCreate',
-                                                             'SandboxChanged']:
-
-                    message = ev.message if ev.message != None else ''
-
-                    if ev.reason != None:
-                        skipper_uid = cluster + "_" + ev.involved_object.uid
-                        bad_resources.append((skipper_uid,ev.involved_object.kind,ev.involved_object.name, ev.reason, message))
-
-                        info = {}
-                        if ev.involved_object.kind == 'Pod':
-                            pod_metrics, container_metrics = metrics.aggregate_pod_metrics(cluster, ns, ev.involved_object.name)
-                            info['pod_metrics'] = pod_metrics
-                            info['container_metrics'] = container_metrics
-
-                        # write resources to db
-                        resource_data = {'uid': skipper_uid, "rtype": ev.involved_object.kind,
-                                         "name": ev.involved_object.name, "cluster": cluster, "namespace": ns, "info":json.dumps(info)}
-                        requests.post('http://127.0.0.1:5000/resource/{}'.format(skipper_uid), data=resource_data)
-
-    return bad_resources

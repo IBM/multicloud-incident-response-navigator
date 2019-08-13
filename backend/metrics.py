@@ -1,16 +1,17 @@
 import requests
-import k8s_api, k8s_config
 from kubernetes import client, config
 from hurry.filesize import size, iec
 from si_prefix import si_format
+import k8s_api, k8s_config
 
 k8s_config.update_available_clusters()
 
 def get_value_and_unit(value_string):
     """
     Takes a string and splits it up, returning the number part and the unit part
-    :param value_string: examples: "100Mi", "8", "500n" (does not need to include unit)
-    :return: (int) numerical value, (str) unit, which is empty string for no unit
+
+    :param (str) value_string: examples: "100Mi", "8", "500n" (does not need to include unit)
+    :return: ((int) numerical value, (str) unit, which is empty string for no unit)
     """
     i = 0
     while i < len(value_string) and (value_string[i].isdigit() or value_string[i] == 'e'): # e for scientific notation
@@ -24,8 +25,8 @@ def get_value_and_unit(value_string):
 def convert_to_base_unit(value, unit):
     """
     Convert value from current unit to base unit
-    :param value: (int) Numerical value
-    :param unit: (str) unit, where empty string denotes base unit
+    :param (int) value: Numerical value
+    :param (str) unit: unit, where empty string denotes base unit
     :return: (int) the value in base unit
     """
     POWERS_BY_UNIT = {'n': -3,
@@ -48,9 +49,9 @@ def convert_to_base_unit(value, unit):
 def aggregate_pod_metrics(cluster_name, namespace, pod_name):
     """
     Get the pod and container compute resources
-    :param cluster_name: (str) pod cluster
-    :param namespace: (str) pod namespace
-    :param pod_name: (str) pod name
+    :param (str) cluster_name: cluster the pod is in
+    :param (str) namespace: namespace the pod is in
+    :param (str) pod_name
     :return: ((Dict) pod_final, (Dict) containers_final)
                 where if resource_metric_dict = {'cpu': (str) current_cpu, 'cpu_limit': (str) cpu_limit or 'N/A',
                                                 'mem': (str) current_mem, 'mem_limit': (str) mem_limit or 'N/A'},
@@ -61,7 +62,8 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
 
     def get_pod_container_usage(cluster_name, namespace, pod_name):
         """
-        Returns Dict(container_name, (cpu, mem)) for current container resource usage, or None if http request failed
+        Helper method for getting current usage for containers in a pod
+        :return: Dict(container_name : (cpu, mem)), or None if http request failed
         """
         # load configuration for the desired context to get host and api key
         myconfig = client.Configuration()
@@ -86,8 +88,8 @@ def aggregate_pod_metrics(cluster_name, namespace, pod_name):
 
     def get_pod_container_limits(cluster_name, namespace, pod_name):
         """
-        Returns Dict(container_name, (cpu, mem, (bool) is_init_container)) for container resource limits
-            - None values for cpu and mem mean no limits were specified
+        Helper method for getting limits for containers in a pod
+        :return: Dict(container_name : (cpu, mem, (bool) is_init_container))), where None for cpu and mem mean no limits specified
         """
         api_client = k8s_api.api_client(cluster_name=cluster_name, api_class="CoreV1Api")
         pod_object = api_client.read_namespaced_pod(pod_name, namespace)

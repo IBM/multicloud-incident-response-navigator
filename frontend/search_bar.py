@@ -3,7 +3,6 @@ Module that holds the logic for the query mode search bar.
 """
 
 import sys
-import curses
 
 this = sys.modules[__name__]	# used to reference module variables
 
@@ -18,19 +17,17 @@ LEFT_PADDING = 5
 query_chars = []				# list of characters that represents the user's query so far
 max_len = 0 					# maximum of length of a query, as dictated by space constraints
 
-
 def set_window(sb_window) -> None:
 	"""
 	Initializes module variables based on the given curses window.
 
-	Arguments: 	(_curses.window) sb_window, search bar window
-	Returns:	None
+	:param (_curses.window) sb_window: search bar window
+	:return None
 	"""
 	this.window = sb_window
 	this.height, this.width = sb_window.getmaxyx()
 	this.max_len = this.width - 2 * LEFT_PADDING
 	this.start_y, this.start_x = 1, LEFT_PADDING
-
 
 def draw() -> None:
 	"""
@@ -50,17 +47,17 @@ def draw() -> None:
 
 def get_query() -> str:
 	"""
-	Returns the current query.
+	:return: the current query.
 	"""
 	return "".join(this.query_chars)
 
 def addch(char: chr) -> None:
 	"""
 	Writes the given char at the current cursor position.
-
 	Acts like window.addch(), except that it inserts instead of overwriting characters.
-	Arguments:	(chr) char, the character to write
-	Returns:	None
+
+	:param (chr) char: the character to write
+	:return: None
 	"""
 	y,x = this.bar_window.getyx()
 	if len(this.query_chars) < this.max_len:
@@ -74,7 +71,6 @@ def addch(char: chr) -> None:
 	else:
 		this.bar_window.move(y, x)
 	this.bar_window.refresh()
-
 
 def backspace() -> None:
 	"""
@@ -93,7 +89,6 @@ def backspace() -> None:
 		this.bar_window.move(y, x-1)
 	this.bar_window.refresh()
 
-
 def move_left() -> None:
 	"""
 	Moves the cursor left, if possible.
@@ -102,7 +97,6 @@ def move_left() -> None:
 	if x > LEFT_PADDING:
 		this.bar_window.move(y, x-1)
 	this.bar_window.refresh()
-
 
 def move_right() -> None:
 	"""
@@ -115,14 +109,12 @@ def move_right() -> None:
 		this.bar_window.move(y,x)
 	this.bar_window.refresh()
 
-
 def move_to_start() -> None:
 	"""
 	Moves the cursor to the start of the query.
 	"""
 	this.bar_window.move(1, LEFT_PADDING)
 	this.bar_window.refresh()
-
 
 def move_to_end() -> None:
 	"""

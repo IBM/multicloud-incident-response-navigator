@@ -5,13 +5,11 @@ Module with curses helper functions.
 import curses
 from typing import List
 
-
 def initialize_curses():
 	"""
 	Initializes curses and returns a _curses.window object for the entire screen.
 
-	Arguments:	None
-	Returns:	(_curses.window) stdscr
+	:return: (_curses.window) stdscr
 	"""
 
 	stdscr = curses.initscr()
@@ -39,8 +37,9 @@ def print_center(stdscr, text_lines: List[str]) -> None:
 	"""
 	Draws the given lines of text in the center of the screen.
 
-	Arguments:	(_curses.window) stdscr
-				(List[str]) text_lines
+	:param (_curses.window) stdscr
+	:param (List[str]) text_lines
+	:return: None
 	"""
 
 	stdscr.erase()
@@ -56,25 +55,11 @@ def highlight_window(window, grey=False) -> None:
 	"""
 	Makes the given window's background white and text black.
 
-	Arguments:	(_curses.window) window
-	Returns:	None
+	:param (_curses.window) window
+	:return: None
 	"""
+
 	if not grey:
 		window.bkgd(" ", curses.A_STANDOUT)
 	else:
 		window.bkgd(" ", curses.color_pair(3))
-
-
-def bottom_border(window) -> None:
-	"""
-	Draws a border on the bottom edge of the given window.
-
-	Arguments:	(_curses.window) window
-	Returns:	None
-	"""
-
-	nochar = curses.A_INVIS
-	hline = curses.ACS_HLINE
-
-	# l,r,t,b,tl,tr,bl,br
-	window.border(nochar,nochar,nochar,0,nochar,nochar,hline,hline)

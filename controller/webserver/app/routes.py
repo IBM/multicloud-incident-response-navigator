@@ -1,18 +1,16 @@
+import sys, requests, datetime, json
+import sqlalchemy, yaml
+from dateutil.parser import parse
+from flask import request, jsonify
 from app import app, db
 from app.models import Resource, Edge
-from flask import request, jsonify, redirect, url_for
-import sys, requests, datetime, inspect, json
-from dateutil.parser import parse
-import sqlalchemy, yaml
-
 
 sys.path.insert(0,'../../backend')
 import resource_files, metrics
-import apps, clients_resources, k8s_config
+import clients_resources, k8s_config
 import cluster_mode_backend as cmb
 import app_mode_backend as amb
 import errors_backend as eb
-
 
 # loads the user's kube-config
 # gets exception info if something went wrong in the process
@@ -20,6 +18,9 @@ running, e = k8s_config.load_kube_config()
 info_handler = resource_files.ResourceFiles()
 
 def to_json(k8s_obj) -> str:
+	"""
+	Turn object to json using json.dumps() on object dictionary, defaulting to __str__
+	"""
 	to_s = lambda dt: dt.__str__()
 	return json.dumps(k8s_obj.to_dict(), default=to_s)
 
@@ -29,15 +30,19 @@ try:
 except sqlalchemy.exc.OperationalError as e:
 	db.create_all()
 
-
-# helper function that converts a Resource or Edge into a dictionary
 def row_to_dict(row) -> dict:
+	"""
+	Helper function that converts a Resource or Edge into a dictionary
+	"""
 	d = {}
 	for column in row.__table__.columns:
 		d[column.name] = str(getattr(row, column.name))
 	return d
 
 def has_children(table):
+	"""
+	Returns List[bool] for whether each item in table has children or not.
+	"""
 	has_children = []
 	for t_item in table:
 		has_children.append(False if db.session.query(Edge).filter(Edge.start_uid == t_item.uid).first() is None else True)
@@ -47,7 +52,6 @@ def has_children(table):
 @app.route('/index')
 def index():
 	return "Hello, World!"
-
 
 @app.route('/running')
 def status():
@@ -62,14 +66,14 @@ def start(mode):
 	"""
 	Retrieves and stores clusters+namespaces, and applications+deployables, and returns starting table
 	:param mode: 'app' or 'cluster'
-	:return: json response including path (List[str], list of names of resources in the path),
-									rtypes (List[str], list of rtypes of resources in the path),
+	:return: json response including path_names (List[str], list of names of resources in the path),
+									path_rtypes (List[str], list of rtypes of resources in the path),
+									path_uids (List[str], list of skipper uids of resources in the path),
+									table_items (List[Dict], list of dictionaries for resources to be displayed),
 									index (int, row to be selected),
-									table (List[Dict], list of dictionaries for resources to be displayed),
-									current_resource (Resource)
+									has_children (List[bool]), whether each resource in table has children),
+									has_apps (bool, if MCM applications are found)
 	"""
-
-	# k8s_config.update_available_clusters()
 
 	cluster_rows = db.session.query(Resource).filter(Resource.rtype=="Cluster").all()
 	if len(cluster_rows) == 0:
@@ -149,14 +153,12 @@ def start(mode):
 
 	return jsonify(path_names=[], path_rtypes=[], path_uids=[], table_items=table_dicts, index=0, has_children=has_children(table), has_apps=has_apps)
 
-
-
 @app.route('/resource/<uid>', methods = ["GET", "POST", "PUT", "DELETE"])
 def resource(uid):
 	"""
-	All things related to a specific resource, based on request method
+	Get, add, update, or delete a specific resource based on request method. Modifies database.
 	:param uid: skipper_uid of the resource
-	:return:
+	:return: (str) brief message of action taken
 	"""
 
 	if request.method == "GET":
@@ -194,7 +196,7 @@ def resource(uid):
 				db.session.commit()
 			except sqlalchemy.exc.IntegrityError: # unique uid already in db
 				requests.put('http://127.0.0.1:5000/resource/{}'.format(uid), data=data) # redirect as put request with same data
-			return "Resource saved" # TODO what is the proper thing to return?
+			return "Resource saved"
 
 		if request.method == 'PUT': # update db
 			db.session.query(Resource).filter(Resource.uid == uid).update(data)
@@ -203,6 +205,12 @@ def resource(uid):
 
 @app.route('/resource/<uid>/<info_type>')
 def get_resource_info(uid, info_type):
+	"""
+	Get info for a specific resource
+	:param uid: uid of resource of interest
+	:param info_type: "yaml", "events", or "logs"
+	:return: json response with resource info
+	"""
 	resource = db.session.query(Resource).filter(Resource.uid == uid).first()
 	uid = uid.split("_")[-1]
 
@@ -222,14 +230,15 @@ def get_resource_info(uid, info_type):
 @app.route('/mode/<mode>/<uid>')
 def get_table_by_resource(mode, uid):
 	"""
-	Get the table and relevant info for navigating INTO a resource (aka the table lists children)
+	Get the table and relevant info for navigating INTO a resource (aka the table lists resource's children)
 	:param mode: 'app' or 'cluster'
 	:param uid: skipper uid of resource
-	:return: json response including path (List[str], list of names of resources in the path),
-									rtypes (List[str], list of rtypes of resources in the path),
+	:return: json response including path_names (List[str], list of names of resources in the path),
+									path_rtypes (List[str], list of rtypes of resources in the path),
+									path_uids (List[str], list of skipper uids of resources in the path),
+									table_items (List[Dict], list of dictionaries for resources to be displayed),
 									index (int, row to be selected),
-									table (List[Dict], list of dictionaries for resources to be displayed),
-									current_resource (Resource)
+									has_children (List[bool]), whether each resource in table has children)
 	"""
 
 	resource = db.session.query(Resource).filter_by(uid=uid).first()
@@ -327,10 +336,10 @@ def get_table_by_resource(mode, uid):
 @app.route('/edge/<start_uid>/<end_uid>', methods=['POST', 'DELETE'])
 def edge(start_uid, end_uid):
 	"""
-	All things related to a specific edge, based on request method
-	:param start_uid: uid of parent
-	:param end_uid: uid of child
-	:return:
+	Add an edge to the database.
+	:param start_uid: skipper_uid of the parent resource
+	:param end_uid: skipper_uid of the child resource
+	:return: (str) brief message of action taken
 	"""
 	data = request.form
 	if request.method == 'POST':
@@ -339,18 +348,18 @@ def edge(start_uid, end_uid):
 		db.session.commit()
 		return "Edge saved"
 
-
 @app.route('/mode/app/switch/<uid>')
 def switch_app_mode(uid):
 	"""
 	Get the hierarchy info for switching into app mode from a resource
-	(Difference between this and get_table_by_resource is that this one takes you to siblings, not children)
+	(Difference between this and get_table_by_resource is that this one includes resource's siblings, not children, in table)
 	:param uid: uid of resource to switch modes on
-	:return: json response including path (List[str], list of names of resources in the path),
-									rtypes (List[str], list of rtypes of resources in the path),
+	:return: json response including path_names (List[str], list of names of resources in the path),
+									path_rtypes (List[str], list of rtypes of resources in the path),
+									path_uids (List[str], list of skipper uids of resources in the path),
+									table_items (List[Dict], list of dictionaries for resources to be displayed),
 									index (int, row to be selected),
-									table (List[Dict], list of dictionaries for resources to be displayed),
-									current_resource (Resource)
+									has_children (List[bool]), whether each resource in table has children)
 	"""
 
 	# if we're switching from nothing, go to top of the Application hierarchy
@@ -410,13 +419,14 @@ def switch_app_mode(uid):
 def switch_cluster_mode(uid):
 	"""
 	Get the hierarchy info for switching into cluster mode from a resource
-	(Difference between this and get_table_by_resource is that this one takes you to siblings, not children)
+	(Difference between this and get_table_by_resource is that this one includes resource's siblings, not children, in table)
 	:param uid: uid of resource to switch modes on
-	:return: json response including path (List[str], list of names of resources in the path),
-									rtypes (List[str], list of rtypes of resources in the path),
+	:return: json response including path_names (List[str], list of names of resources in the path),
+									path_rtypes (List[str], list of rtypes of resources in the path),
+									path_uids (List[str], list of skipper uids of resources in the path),
+									table_items (List[Dict], list of dictionaries for resources to be displayed),
 									index (int, row to be selected),
-									table (List[Dict], list of dictionaries for resources to be displayed),
-									current_resource (Resource)
+									has_children (List[bool]), whether each resource in table has children)
 	"""
 
 	# if we're switching from nothing, go to top of the Application hierarchy
@@ -472,9 +482,12 @@ def switch_cluster_mode(uid):
 
 	return jsonify(path_names=data['path_names'], path_rtypes=data['path_rtypes'], path_uids=data['path_uids'], table_items=siblings, index=index, has_children=data['has_children'])
 
-
 @app.route('/errors')
 def get_errors():
+	"""
+	Get all the unhealthy pods to display in anomaly mode table
+	:return: json response of (List[Dict]) of unhealthy pods
+	"""
 	# each item in table_items list is (skipper_uid, type, name, status, reason)
 
 	anomalies = db.session.query(Resource).filter(Resource.sev_measure==1).all()
@@ -499,20 +512,12 @@ def get_errors():
 	anomalies = db.session.query(Resource).filter(Resource.sev_measure == 1).all()
 	return jsonify(table_items=[row_to_dict(a) for a in anomalies])
 
-@app.route('/view_resources')
-def view_resources():
-	result = Resource.query.all()
-	return jsonify(resources=[row_to_dict(res) for res in result])
-
-@app.route('/view_edges')
-def view_edges():
-	result = Edge.query.all()
-	return jsonify(edges=[row_to_dict(res) for res in result])
-
 @app.route('/search/<query>')
 def search(query: str):
 	"""
 	Searches over all resource names and returns the results as json.
+	:param (str) query: the text the user typed into search bar
+	:return: json response of (List[Dict]) the results to be displayed in table
 	"""
 	if query.isspace():
 		return jsonify(results=[])
@@ -545,11 +550,22 @@ def search(query: str):
 @app.route('/search/')
 def empty_search():
 	"""
-	Returns an empty search result.
+	:return: json response of empty list, meaning empty search result
 	"""
 	return jsonify(results=[])
 
-# @app.route('/redirectme')
-# def redirectme():
-# 	result = redirect(url_for('view_db'))
-# 	return result
+@app.route('/view_resources')
+def view_resources():
+	"""
+	Helper to view all resources in db
+	"""
+	result = Resource.query.all()
+	return jsonify(resources=[row_to_dict(res) for res in result])
+
+@app.route('/view_edges')
+def view_edges():
+	"""
+	Helper to view all edges in db
+	"""
+	result = Edge.query.all()
+	return jsonify(edges=[row_to_dict(res) for res in result])

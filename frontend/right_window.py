@@ -16,14 +16,13 @@ status = ""
 event_headers=["Type", "Reason", "Age", "From", "Message"]
 metrics_headers=["","CPU (cores)","CPU Limit","MEM (bytes)","MEM Limit"]
 
-def init(stdscr, panel_height, panel_width, top_height):
+def init(panel_height, panel_width, top_height):
 	""" 
-	makes initial pad and top window
-	:param stdscr: window to draw within
+	Makes initial pad and top window of the right pane
 	:param panel_height: height of pad
 	:param panel_width: width of pad
 	:param top_height: height of top panel (y where the top banner should start drawing)
-	:return:
+	:return: None
 	"""
 	this.panel_height, this.panel_width, this.top_height = panel_height, panel_width, top_height
 	this.scroll_y, this.scroll_x = 0, 0
@@ -36,9 +35,9 @@ def draw_pad(panel_height, panel_width):
 def draw(ftype, resource_data):
 	""" 
 	chooses whether to draw summary, yaml, or logs based on keybinding
-	:param ftype: yaml / logs / summary
-	:resource data: all info relevant to resource
-	:return:
+	:param (str) ftype: yaml / logs / summary / events
+	:param (Dict) resource data: all info relevant to resource
+	:return: None
 	"""
 	this.win.erase()
 	this.background_win.erase()
@@ -52,13 +51,12 @@ def draw(ftype, resource_data):
 
 	file_types = { "yaml" : "Yaml: "+ this.rname, "summary" :  this.rtype + ": " + this.rname, "logs" : "Logs: "+ this.rname, "events" : "Events: "+ this.rname}
 
-
 	if ftype == "yaml":
 		get_yaml(resource_data)
 		this.doc_height = max(this.panel_height, calc_height(this.yaml, this.panel_width-INDENT_AMT) + 5)
 		this.doc_width = this.panel_width
 		draw_pad(this.doc_height, this.doc_width)
-		draw_yaml(resource_data, this.yaml)
+		draw_yaml(this.yaml)
 
 	elif ftype == "logs":
 		this.logs = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "logs")).json()["logs"].split('\n')
@@ -106,26 +104,24 @@ def draw(ftype, resource_data):
 			this.doc_width = this.panel_width
 			this.doc_height = max(len(new_table) + 5, this.panel_height)
 			draw_pad(this.doc_height, this.doc_width)
-			draw_events(resource_data, new_table)
+			draw_events(new_table)
 
 	elif ftype == "summary":
 		get_yaml(resource_data)
 		draw_pad(max(this.panel_height, calc_height(this.yaml, this.panel_width-INDENT_AMT) + 5), this.panel_width)
 		this.doc_height = max(this.panel_height, draw_summary(resource_data))
-	"""
-	INDENT_AMT+1 is to match the alignment of top (name) banner
-	"""
+
+	# INDENT_AMT+1 is to match the alignment of top (name) banner
 	this.background_win.addstr(1, INDENT_AMT+1, file_types[ftype], curses.A_BOLD)
 	this.background_win.border(curses.ACS_VLINE, " ", " ", " ", curses.ACS_VLINE, " ", " ", " ")
 	this.background_win.refresh()
-	# this.win.border(curses.ACS_VLINE, " ", " ", " ", curses.ACS_VLINE, " ", " ", " ")
 	this.win.refresh(this.scroll_y, this.scroll_x, top_height+2, panel_width+1, this.panel_height+this.top_height-1, 2*this.panel_width-2)
 
-def draw_yaml(resource_data, yaml):
+def draw_yaml(yaml):
 	""" 
-	draws the first lines of yaml that fits, TODO: also get them for custom resources and namespaces
-	:resource data: all info relevant to resource
-	:return:
+	Draws the resource yaml in right win
+	:param (List[str]) yaml
+	:return: None
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 	y = 1
@@ -134,9 +130,9 @@ def draw_yaml(resource_data, yaml):
 
 def draw_logs(resource_data, logs):
 	""" 
-	draws the first lines of logs that fit, also tells user about the nonexistence of logs for resources other than pods"
-	:resource data: all info relevant to resource
-	:return:
+	Draws logs, or tells user about the nonexistence of logs for resources other than pods
+	:param (Dict) resource data: all info relevant to resource
+	:return: None
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 	if resource_data["rtype"] in ["Pod"]:
@@ -145,10 +141,11 @@ def draw_logs(resource_data, logs):
 	else:
 		win.addstr(1, INDENT_AMT, "Logs only exist for pods")
 
-def draw_events(resource_data, events_table):
+def draw_events(events_table):
 	"""
-	queries database, formats events with tabulate and then draws it
-	:return:
+	Draw events table
+	:param (List[str]) events_table
+	:return: None
 	"""
 	win, panel_height, panel_width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 
@@ -158,10 +155,10 @@ def draw_events(resource_data, events_table):
 
 def draw_summary(resource_data):
 	"""
-	refreshes and populates summary pane with info based on resource
-	creates top, left, and right derwins for top banner and columns
-	:param resource_data: all data related to the current resource to be displayed
-	:return:
+	Refreshes and populates summary pane with info based on resource
+	Creates top, left, and right derwins for top banner and columns
+	:param (Dict) resource_data: all data related to the current resource to be displayed
+	:return: None
 	"""
 	win, length, width, top_height = this.win, this.panel_height, this.panel_width, this.top_height
 
@@ -200,6 +197,11 @@ def draw_summary(resource_data):
 	return y
 
 def get_yaml(resource_data):
+	"""
+	Get the resource yaml and set this.yaml
+	:param (Dict) resource data: all info relevant to resource
+	:return: None
+	"""
 	if resource_data["rtype"] != "Cluster":
 		this.yaml = requests.get('http://127.0.0.1:5000/resource/{}/{}'.format(resource_data["cluster"]+'_'+resource_data["uid"].split('_')[-1], "yaml")).json()["yaml"].split('\n')
 	else: # cluster yamls are stored instead of directly queried from the api
@@ -212,9 +214,9 @@ def get_yaml(resource_data):
 
 def draw_service(resource_data):
 	"""
-	fills in left and right windows will info relevant to service
-	:resource data: all info relevant to service
-	:return: y coordinate to start drawing related resources on
+	Fills in left and right summary windows with info relevant to service
+	:param (Dict) resource data: all info relevant to resource
+	:return: end y coordinate
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	labels, selector, ports, status = None, None, None, None
@@ -225,14 +227,13 @@ def draw_service(resource_data):
 		ports = info["spec"]["ports"] if info["spec"].get("ports") else None
 		status = info["status"]
 
-
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + resource_data["uid"]]
 	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"]]
 
 	if resource_data.get("application"):
 		lfields.append("Application: " + resource_data["application"])
 
-	y = iterate_info(win, left, right, lfields, rfields, width)
+	y = iterate_info(left, right, lfields, rfields, width)
 
 	lefty = righty = y
 	if labels is not None:
@@ -247,10 +248,10 @@ def draw_service(resource_data):
 	return max(lefty,righty)
 
 def draw_work(resource_data):
-	""" 
-	fills in left and right windows will info relevant to Deployment / Deployable / StatefulSet / ReplicaSet / DaemonSet
-	:resource data: all info relevant to Deployment / Deployable / StatefulSet / ReplicaSet / DaemonSet
-	:return: y coordinate to start drawing related resources on
+	"""
+	Fills in left and right summary windows with info relevant to Deployment / Deployable / StatefulSet / DaemonSet
+	:param (Dict) resource data: all info relevant to resource
+	:return: end y coordinate
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	labels, available, unavailable, updated, reps, ready = None, "None", "None", "None", 'None', 'None'
@@ -289,7 +290,7 @@ def draw_work(resource_data):
 
 	elif resource_data['rtype'] == "StatefulSet":
 		rfields.append("Ready: " + ready_reps)
-	y = iterate_info(win, left, right, lfields, rfields, width)
+	y = iterate_info(left, right, lfields, rfields, width)
 
 	lefty = righty = y
 
@@ -299,17 +300,13 @@ def draw_work(resource_data):
 	if resource_data['rtype'] in ["StatefulSet", "DaemonSet"] and resource_data["info"] != "None":
 		righty = draw_pairs(right, righty, "Status:", width//2-2*INDENT_AMT, info["status"])
 
-	# if status not in [{}, None] and status.get("conditions"):
-	# 	for i,item in enumerate(status["conditions"]):
-	# 		righty = draw_pairs(right, righty, "Condition " + str(i+1), width//2-2*INDENT_AMT, item)
-
 	return max(lefty, righty)
 
 def draw_ns(resource_data):
 	"""
-	fills in left and right windows will info relevant to namespace
-	:resource data: all info relevant to namespace
-	:return: y coordinate to start drawing related resources on
+	Fills in left and right summary windows with info relevant to Namespace
+	:param (Dict) resource data: all info relevant to resource
+	:return: end y coordinate
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	k8s_uid = resource_data["uid"]
@@ -322,13 +319,13 @@ def draw_ns(resource_data):
 	lfields = ["Cluster: " + resource_data["cluster"], "Namespace: " + resource_data["namespace"], "UID: " + k8s_uid]
 	rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"], "Status: "  + str(status)]
 
-	return iterate_info(win, left, right, lfields, rfields, width)
+	return iterate_info(left, right, lfields, rfields, width)
 
 def draw_app(resource_data):
 	"""
-	fills in left and right windows will info relevant to app
-	:resource data: all info relevant to app
-	:return: y coordinate to start drawing related resources on
+	Fills in left and right summary windows with info relevant to Application
+	:param (Dict) resource data: all info relevant to resource
+	:return: end y coordinate
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
@@ -345,7 +342,7 @@ def draw_app(resource_data):
 	if resource_data.get("application"):
 		lfields.append("Application: " + resource_data["application"])
 
-	lefty = iterate_info(win, left, right, lfields, rfields, width)
+	lefty = iterate_info(left, right, lfields, rfields, width)
 	righty = lefty
 
 	if labels is not None:
@@ -355,9 +352,9 @@ def draw_app(resource_data):
 
 def draw_pod(resource_data):
 	"""
-	fills in left and right windows will info relevant to pod
-	:resource data: all info relevant to pod
-	:return: y coordinate to start drawing related resources on
+	Fills in left and right summary windows with info relevant to Pod
+	:param (Dict) resource data: all info relevant to resource
+	:return: end y coordinate
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	host_ip, pod_ip, ready, restarts = parse_pod_status(resource_data)
@@ -375,7 +372,7 @@ def draw_pod(resource_data):
 	if resource_data.get("application"):
 		lfields.append("Application: " + resource_data["application"])
 
-	lefty = iterate_info(win, left, right, lfields, rfields, width)
+	lefty = iterate_info(left, right, lfields, rfields, width)
 	righty = lefty
 
 	if labels is not None:
@@ -416,8 +413,8 @@ def draw_pod(resource_data):
 def parse_pod_status(pod_dict):
 	"""
 	Using dictionary with db data for a given pod, returns information about pod status
-	:param pod_dict: dictionary form of the pod resource in the database
-	:return: (all strings) host_ip, pod_ip, ready, restarts
+	:param (Dict) pod_dict: all pod info
+	:return: (str) host_ip, (str) pod_ip, (str) ready, (str) restarts
 	"""
 	host_ip, pod_ip, ready, restarts= "None", "None", "None", "None"
 	if pod_dict["info"] != "None":
@@ -441,9 +438,9 @@ def parse_pod_status(pod_dict):
 
 def draw_cluster(resource_data):
 	"""
-	fills in left and right windows will info relevant to cluster
-	:resource data: all info relevant to cluster
-	:return: y coordinate to start drawing related resources on
+	Fills in left and right summary windows with info relevant to Cluster
+	:param (Dict) resource data: all info relevant to resource
+	:return: end y coordinate
 	"""
 	win, left, right, length, width = this.win, this.left, this.right, this.panel_height, this.panel_width
 	if resource_data["info"] != "None":
@@ -456,7 +453,7 @@ def draw_cluster(resource_data):
 
 		lfields = ["Local Cluster Name: " + resource_data["cluster"], "UID: " + k8s_uid, "Remote Cluster Name: " + remote_name, "Namespace on Hub: " + remote_namespace]
 		rfields = ["Age: " + resource_data["age"], "Created: " + resource_data["created_at"], "Last updated: "+resource_data["last_updated"] ]
-		lefty = righty = iterate_info(win, left, right, lfields, rfields, width)
+		lefty = righty = iterate_info(left, right, lfields, rfields, width)
 
 		if labels is not None:
 			lefty = draw_pairs(left, lefty, "Labels:", width//2-INDENT_AMT, labels)
@@ -474,9 +471,9 @@ def draw_cluster(resource_data):
 
 def calc_age(time):
 	"""
-	turns datetime or timedelta object into an age string
-	:param time: date object
-	:return: string of age followed by 1 char unit of time
+	Turns datetime or timedelta object into an age string
+	:param (Datetime) time: date object
+	:return: (str) age followed by 1 char unit of time
 	"""
 	if time.days == 0:
 		hours = time.seconds // 3600
@@ -489,16 +486,20 @@ def calc_age(time):
 	return str(time.days)+"d"
 
 def calc_height(lines, width):
+	"""
+	Calculate height of lines of text with wrapping
+	:param (List[str]) lines: original lines of text
+	:param (int) width: max width before wrapping
+	:return: (int) lines with wrapping taken into account
+	"""
 	y = 0
 	for line in lines:
 		y += math.ceil(len(line) / width)
 	return y
 
-
-def iterate_info(win, left, right, lfields, rfields, width):
+def iterate_info(left, right, lfields, rfields, width):
 	"""
-	draws lines of information for left and right columns
-	:param win: window to draw in
+	Draws lines of information for left and right columns
 	:param left: left column window
 	:param right: right column window
 	:param lfields: list of fields/ info to fill in for left column
@@ -517,7 +518,8 @@ def iterate_info(win, left, right, lfields, rfields, width):
 
 def iterate_indented_pairs(win, start_y, start_x, pairs, alloted_width, indent = False):
 	"""
-	draws and wraps pairs of information, where pairs are indented one from title
+	Draws and wraps pairs of information, where pairs are indented one from title
+	:param win: window to draw in
 	:param start_y: y coord to start in
 	:param start_x: x coord to start in
 	:param pairs: dict of information to draw
@@ -542,7 +544,7 @@ def iterate_indented_pairs(win, start_y, start_x, pairs, alloted_width, indent =
 
 def draw_str(win, y, x, string, maxw):
 	"""
-	draws and wraps string
+	Draws and wraps string
 	:param win: window to draw in
 	:param y: y coord to start in
 	:param x: x coord to start in
@@ -565,7 +567,7 @@ def draw_str(win, y, x, string, maxw):
 
 def draw_pairs(win, y, name, width, pairs):
 	"""
-	draws title and info (which are pairs)
+	Draws title and info (which are pairs)
 	:param win: window to draw in
 	:param y: y coord to start in
 	:param name: type/name/title of pairs to be drawn

@@ -1,10 +1,12 @@
-import clients_resources as cr
 import yaml, datetime, pytz, kubernetes
 import app_mode_backend as amb
+import clients_resources as cr
 
 class ResourceFiles:
 	def __init__(self):
 		self.clusters, self.clients, self.active_cluster= cr.get_clients()
+
+		# preload app and deployable information (for yaml)
 		apps = amb.all_applications()
 		self.apps = { app["metadata"]["name"] : app for app in apps}
 		self.dpbs = {}
@@ -17,9 +19,15 @@ class ResourceFiles:
 				dpb_name = dpb["metadata"]["name"]
 				self.dpbs[dpb_name] = dpb
 
-
-	# both yaml and describe information lives in read, so it may make more sense ot output them as the same yaml file
 	def get_yaml(self, type, name, namespace, cluster):
+		"""
+		Helper to get resource yaml
+		:param (str) type: resource type
+		:param (str) name: resource name
+		:param (str) namespace
+		:param (str) cluster
+		:return: (str) yaml, or "Yaml not found" if we don't cover that resource type
+		"""
 		if type in ["DaemonSet", "Deployment", "ReplicaSet", "StatefulSet"]:
 			client = self.clients[cluster]["apps_client"]
 		elif type in ["Pod", "Service", "Event", "Namespace"]:
@@ -60,6 +68,19 @@ class ResourceFiles:
 		return str(time.days)+"d"
 
 	def get_events(self, cluster, namespace, uid):
+		"""
+		Helper to get events for a resource
+		:param (str) cluster
+		:param (str) namespace
+		:param (str) uid: k8s uid for the resource of interest
+		:return: (List[
+					List[
+						(str) event type, "Normal" or "Warning",
+						(str) event reason,
+						(str) event age,
+						(str) event source,
+						(str) event message]
+		"""
 		events = self.clients[cluster]["core_client"].list_namespaced_event(namespace).items
 		events_list = [ e  for e in events if e.involved_object.uid == uid ]
 		table = []
@@ -89,19 +110,15 @@ class ResourceFiles:
 		return table
 
 	def get_logs(self, cluster, namespace, pod_name):
+		"""
+		Helper to get pod logs
+		:param (str) cluster
+		:param (str) namespace
+		:param (str) pod_name
+		:return: (str) pod logs, or "Logs unavailable" if ApiException
+		"""
 		try:
 			doc = self.clients[cluster]["core_client"].read_namespaced_pod_log(pod_name, namespace)
-		except kubernetes.client.rest.ApiException as e:
+		except kubernetes.client.rest.ApiException:
 			doc = "Logs unavailable"
 		return doc
-
-def main():
-	rf = ResourceFiles()
-	# doc = rf.get_describe("Service", "ratings", "default", "mycluster")
-	doc = rf.get_yaml("Deployment", "coredns-autoscaler", "kube-system","iks-extremeblue")
-	# doc = rf.get_logs("mycluster", "default", "boisterous-shark-gbapp-frontend-8b5cc67bf-wctkb")
-	# doc = rf.get_events("iks-extremeblue", "kube-system", "955624bd-a8ea-11e9-bc90-1635e13525fe")
-	print(doc)
-
-if __name__ == "__main__":
-	main()

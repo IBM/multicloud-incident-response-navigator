@@ -1,7 +1,5 @@
 from typing import List, Dict
-import json
 import kubernetes as k8s
-from kubernetes import client, config
 import k8s_api, k8s_config, cluster_mode_backend as cmb
 
 # Note: call k8s_config.update_available_clusters() before use!
@@ -18,8 +16,8 @@ def cluster_applications(cluster_name: str) -> List[Dict]:
 	"""
 	Returns all the applications that belong to the given cluster.
 
-	Arguments:	(str) cluster_name
-	Returns:	(List[Dict]) list of dicts, where each dict represents an Application
+	:param (str) cluster_name
+	:return: (List[Dict]) list of dicts, where each dict represents an Application
 	"""
 
 	# retrieve the cluster's Applications
@@ -29,38 +27,33 @@ def cluster_applications(cluster_name: str) -> List[Dict]:
 			group = APP_CRD_GROUP,
 			version = APP_CRD_VERSION,
 			plural = APP_CRD_PLURAL)["items"]
-	except k8s.client.rest.ApiException as e:
+	except k8s.client.rest.ApiException:
 		return []
 	
 	# insert cluster attribute into metadata
 	for app in apps:
 		app["metadata"]["cluster_name"] = cluster_name
-
 	return apps
-
 
 def all_applications() -> List[Dict]:
 	"""
 	Returns all applications across all clusters that can be accessed.
 
-	Arguments:	None
-	Returns:	(List[Dict]) list of dicts, where each dict represents an Application
+	:return: (List[Dict]) list of dicts, where each dict represents an Application
 	"""
 
 	cluster_names = k8s_config.all_cluster_names()
 	applications = []
 	for cluster_name in cluster_names:
 		applications += cluster_applications(cluster_name)
-
 	return applications
-
 
 def cluster_deployables(cluster_name: str) -> List[Dict]:
 	"""
 	Returns a list of all the Deployables that belong to the given cluster.
-	
-	Arguments: 	(str) cluster_name
-	Returns:	(List[Dict]) list of dicts, where each dict represents a Deployable
+
+	:param (str) cluster_name
+	:return: (List[Dict]) list of dicts, where each dict represents a Deployable
 	"""
 
 	# retrieve the cluster's Deployables
@@ -77,15 +70,14 @@ def cluster_deployables(cluster_name: str) -> List[Dict]:
 		result["metadata"]["cluster_name"] = cluster_name
 	return results
 
-
 def application_deployable_names(cluster_name: str, namespace: str, app_name: str) -> List[str]:
 	"""
 	Returns the names of the Deployables that belong the specified Application.
 
-	Arguments:	(str) cluster_name, name of cluster where the Application resides
-				(str) namespace, namespace where the Application resides
-				(str) app_name
-	Returns:	(List[str]) list of Deployable names
+	:param (str) cluster_name: name of cluster where the Application resides
+	:param (str) namespace: namespace where the Application resides
+	:param (str) app_name
+	:return: (List[str]) list of Deployable names
 	"""
 
 	# find the Application using the given arguments
@@ -107,15 +99,14 @@ def application_deployable_names(cluster_name: str, namespace: str, app_name: st
 	dpb_list = app["metadata"]["annotations"]["apps.ibm.com/deployables"].split(",")
 	return dpb_list
 
-
 def application_deployables(cluster_name: str, namespace: str, app_name: str) -> List[Dict]:
 	"""
-	Returns the Deployables that belong the specified Application.
+	Returns the Deployables that belong to the specified Application.
 
-	Arguments:	(str) cluster_name, name of cluster where the Application resides
-				(str) namespace, namespace where the Application resides
-				(str) app_name
-	Returns:	(List[str]) list of dicts, where each dict represents a Deployable
+	:param (str) cluster_name: name of cluster where the Application resides
+	:param (str) namespace: namespace where the Application resides
+	:param (str) app_name
+	:return: (List[str]) list of dicts, where each dict represents a Deployable
 	"""
 	
 	# find the names of the Deployables that belong to this Application
@@ -124,7 +115,6 @@ def application_deployables(cluster_name: str, namespace: str, app_name: str) ->
 		return []
 
 	# aggregate Deployables across all clusters
-	# TODO: make more efficient
 	cluster_names = k8s_config.all_cluster_names()
 	deployables = []
 	for cluster_name in cluster_names:
@@ -136,12 +126,12 @@ def application_deployables(cluster_name: str, namespace: str, app_name: str) ->
 
 def deployable_resource(cluster_name: str, namespace: str, deployable_name: str) -> Dict:
 	"""
-	Returns info on the resource that belongs to the Application.
-	
-	Arguments:	(str) cluster_name, name of cluster where Deployable resides
-				(str) namespace, namespace where Deployable resides
-				(str) deployable_name
-	Returns:	(Dict) dict with info about the Deployable's resource, or empty dict if deployer not accessible
+	Returns info on the resource (deployer) deployed by the specified Deployable.
+
+	:param (str) cluster_name: name of cluster where Deployable resides
+	:param (str) namespace: namespace where Deployable resides
+	:param (str) deployable_name
+	:return: (Dict) dict with info about the deployer, or empty dict if deployer kind (e.g. helm) is not accessible
 	"""
 		
 	# find the Deployable using the arguments given
@@ -167,10 +157,6 @@ def deployable_resource(cluster_name: str, namespace: str, deployable_name: str)
 		deployer_namespace = deployable["spec"]["deployer"]["kube"]["namespace"]
 	else:
 		pass
-		# helm_dict = deployable["spec"]["deployer"]["helm"]
-		# helm_dict["metadata"] = { "cluster_name": "", "name": helm_dict["chartURL"] }
-		# helm_dict["kind"] = "HelmChart"
-		# return helm_dict
 
 	deployer_dict = {}
 
@@ -195,10 +181,15 @@ def deployable_resource(cluster_name: str, namespace: str, deployable_name: str)
 
 	return deployer_dict
 
-
 def deployable_resource_name(cluster_name: str, namespace: str, deployable_name: str) -> Dict:
 	"""
-	Same as first part of deployable_resource() above but only returns deployer name (or empty string)
+	Returns name of resource (deployer) deployed by the specified Deployable.
+	(Same logic as first part of deployable_resource() above)
+
+	:param (str) cluster_name: name of cluster where Deployable resides
+	:param (str) namespace: namespace where Deployable resides
+	:param (str) deployable_name
+	:return: (str) name of deployer, or empty string if deployer kind is helm
 	"""
 
 	# find the Deployable using the arguments given

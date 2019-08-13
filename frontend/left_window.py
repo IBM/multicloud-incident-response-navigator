@@ -74,16 +74,12 @@ def init_win(stdscr, height: int, width: int, y: int, x: int) -> None:
 	"""
 	Initializes the left window and sets relevant position variables.
 
-	Arguments: 	(_curses.window) stdscr
-				(int) height
-					Desired height of the left window.
-				(int) width
-					Desired width of the left window.
-				(int) y
-					Y-coordinate of upper-left corner of window.
-				(int) x
-					X-coordinate of upper-left corner of window.
-	Returns: 	None
+	:param (_curses.window) stdscr
+	:param (int) height: Desired height of the left window.
+	:param (int) width: Desired width of the left window.
+	:param (int) y: Y-coordinate of upper-left corner of window.
+	:param (int) x: X-coordinate of upper-left corner of window.
+	:return: None
 	"""
 
 	this.window = curses.newwin(height, width, y, x)
@@ -111,31 +107,28 @@ def set_contents(mode: str,
 	"""
 	Sets relevant content variables based on given arguments.
 
-	Arguments:	(str) mode
-				(List[str]) col_names
+	:param (str) mode
+	:param (List[str]) col_names:
 					Names of the table column headers.
-				(List[int]) col_widths
+	:param (List[int]) col_widths:
 					Widths of the table columns.
-				(List[List[str]]) table
+	:param (List[List[str]]) table:
 					Rows of information to display in the table.
-				(int) row_selector
+	:param (int) row_selector:
 					Index of which row should be highlighted.
-				(int) start_y
+	:param (int) start_y:
 					Starting row of table pad
-				(List[str]) path_names
-					For app and cluster mode.
-					List of resource names to display in breadcrumb window.
-				(List[str]) path_rtypes
-					For app and cluster mode.
-					List of resource types corresponding to the above resource names.
-				(List[str]) path_uids
-					For app and cluster mode.
-					List of resource uids corresponding to the above resource names.
-				(List[str]) table_uids
+	:param (List[str]) path_names:
+					For app and cluster mode. List of resource names to display in breadcrumb window.
+	:param (List[str]) path_rtypes:
+					For app and cluster mode. List of resource types corresponding to the above resource names.
+	:param (List[str]) path_uids:
+					For app and cluster mode. List of resource uids corresponding to the above resource names.
+	:param (List[str]) table_uids:
 					List of uids for resources in table
-				(List[bool]) has_children
+	:param (List[bool]) has_children:
 					List of booleans for knowing if resource has children
-	Returns: 	None
+	:return: None
 	"""
 
 	this.window = window
@@ -165,14 +158,12 @@ def set_contents(mode: str,
 		this.table_x, this.table_y = 0, y + this.th_height # absolute x,y
 		this.table_height = this.height - this.th_height
 
-
 def draw_bc_window(bc_window) -> None:
 	"""
 	Draws this.path_names and this.path_rtypes in the given breadcrumb window.
 
-	Arguments: 	(_curses.window) bc_window
-					_curses.window object that represents the breadcrumb window
-	Returns:  	None
+	:param (_curses.window) bc_window: _curses.window object that represents the breadcrumb window
+	:return: None
 	"""
 	# edge case: path and rtypes are of different lengths
 
@@ -226,9 +217,8 @@ def draw_tr_window(tr_window, row: List[str], grey_out=False, sev=None) -> None:
 	"""
 	Formats and draws row in the given window.
 
-	Arguments: 	(_curses.window)	tr_window
-					_curses.window object that represents the table row
-	Returns: 	None
+	:param (_curses.window)	tr_window: _curses.window object that represents the table row
+	:return: None
 	"""
 
 	# edge case: start positions are too close together for the col_names
@@ -244,7 +234,6 @@ def draw_tr_window(tr_window, row: List[str], grey_out=False, sev=None) -> None:
 		if len(string) > col_width - 1:
 			return string[:col_width - 4] + "... "
 		return string + " " * (col_width - len(string))
-
 
 	# generate a python format string based on col widths (this.col_widths)
 	row_str = ""
@@ -268,14 +257,12 @@ def draw_tr_window(tr_window, row: List[str], grey_out=False, sev=None) -> None:
 		else:
 			tr_window.addstr(1, this.LEFT_PADDING, row_str)
 
-
 def draw_table_window(table_window) -> None:
 	"""
 	Draws this.table inside the given curses.pad window.
 
-	Arguments:	(_curses.pad)	table_window
-					_curses.pad object that represents the table.
-	Returns:	None
+	:param (_curses.pad) table_window: _curses.pad object that represents the table.
+	:return: None
 	"""
 
 	# create a (derived) window for each row in this.table
@@ -295,13 +282,9 @@ def draw_table_window(table_window) -> None:
 	if len(table) > 0:
 		chs.highlight_window(row_windows[this.row_selector][1], grey=(not this.has_children[this.row_selector] and row_windows[this.row_selector][0][0] != 'Pod'))
 
-
 def draw() -> None:
 	"""
 	Populates this.window with content given by the most recent call to set_contents(...)
-
-	Arguments:	None
-	Returns:	None
 	"""
 
 	this.window.erase()
@@ -339,10 +322,11 @@ def draw() -> None:
 		sb.set_window(this.sb_window)
 		sb.draw()
 
-
 def move_up():
-	# decrements this.row_selector and redraws window, if necessary
-	# returns updated row_selector
+	"""
+	Decrements this.row_selector and redraws window, if necessary
+	:return: (int) updated row_selector, or "empty" if empty table
+	"""
 	if len(this.table) == 0:
 		return "empty"
 
@@ -353,8 +337,10 @@ def move_up():
 
 
 def move_down():
-	# increments this.row_selector and redraws window, if necessary
-	# returns updated row_selector
+	"""
+	Increments this.row_selector and redraws window, if necessary
+	:return: (int) updated row_selector, or "empty" if empty table
+	"""
 	if len(this.table) == 0:
 		return "empty"
 		
@@ -363,12 +349,19 @@ def move_down():
 		this.draw()
 	return this.table_uids[this.row_selector]
 
-
 def get_selected_row():
+	"""
+	Get selected row in table
+	:return:
+	"""
 	return this.table[this.row_selector]
 
 def get_column_widths(multiplier_list):
-	# takes column width %s and returns list of corresponding col width raw values
+	"""
+	Takes column width %s and returns list of corresponding col width raw values
+	:param (List[float]) multiplier_list: the proportions that the total width should be divided into
+	:return: (List[int]) the calculated widths of each column
+	"""
 	col_width_list = []
 	for multiplier in multiplier_list:
 		col_width_list.append(int(multiplier*this.tr_text_width))

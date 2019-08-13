@@ -1,22 +1,22 @@
 import curses
+import sys, requests, copy
+from typing import Dict, Tuple
+
 import skipper_helpers as shs
 import curses_helpers as chs
 import left_window as lwin
 import top_window as twin
 import search_bar as sb
 import right_window as rwin
-import sys, requests, json
-from typing import Dict, Tuple
-import copy
 
 def run_skipper(stdscr):
 	"""
-	Runs the Skipper interactive terminal application.
+	Runs the Skipper interactive terminal application until user quits.
 
-	Arguments: (_curses.window) stdscr
+	:param (_curses.window) stdscr:
 					Automatically passed in by curses.wrapper function.
 					A _curses.window obj that represents the entire screen.
-	Returns:	None
+	:return: None
 	"""
 
 	START_MODE = "cluster"	# possible modes include app, cluster, query, anomaly
@@ -43,7 +43,7 @@ def run_skipper(stdscr):
 	panel_side = START_PANEL
 
 	# initialize and draw top window
-	twin.init_win(stdscr, len(shs.figlet_lines()) + 3, width, 0,0, data['has_apps'])	# height, width, y, x, has_apps
+	twin.init_win(len(shs.figlet_lines()) + 3, width, 0,0, data['has_apps'])	# height, width, y, x, has_apps
 	twin.draw(mode=mode, ftype=ftype, panel=panel_side)
 	twin.init_load(mode)
 	top_height, top_width = twin.window.getmaxyx()
@@ -52,7 +52,7 @@ def run_skipper(stdscr):
 
 	# initialize and draw windows
 	lwin.init_win(stdscr, height=panel_height, width=panel_width, y=top_height, x=0)
-	rwin.init(stdscr, panel_height, panel_width, top_height)
+	rwin.init(panel_height, panel_width, top_height)
 
 	if len(data['table_items']) > 0:
 		table_data = {	"mode": START_MODE,
@@ -211,8 +211,10 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 	Continuously captures input from user, displays in search bar, and updates left and right window with results.
 
 	User must press [esc] to escape from this function.
-	Arguments: 	(_curses.window) stdscr
-	Returns:	( (dict, str, dict) )  state needed to render left and right windows
+	:param (_curses.window) stdscr
+	:param (str) ftype
+	:param (Dict) query_state: last query state
+	:return: ( (Dict, str, Dict) )  state needed to render left and right windows
 	"""
 	curses.curs_set(1)	# show the cursor
 
@@ -323,6 +325,17 @@ def query_mode(stdscr, ftype, query_state) -> Tuple[Dict, str, Dict]:
 	return (resource_by_uid, current_uid, table_data)
 
 def update(mode, table_data, data, twin, lwin, ftype, panel_side):
+	"""
+	Update and draw left, right, and top windows based on mode and table data.
+	:param mode: "app", "cluster", or "anomaly"
+	:param table_data: current table
+	:param data: new data to be reflected in table_data
+	:param twin: top window
+	:param lwin: left window
+	:param ftype: "summary", "yaml", "logs", or "events"
+	:param panel_side: "left" or "right"
+	:return: (Dict) table_data, (Dict) resource_by_uid, (str) current_uid
+	"""
 	table_data["mode"] = mode
 	if mode == 'app' or mode == 'cluster':
 		table_data["col_names"] = ["kind", "name"]
@@ -366,6 +379,10 @@ def update(mode, table_data, data, twin, lwin, ftype, panel_side):
 	return table_data, resource_by_uid, current_uid
 
 def load(request_type, twin, current_uid = None, mode = None, parent_uid =  None, query = None, uid  = None):
+	"""
+	Start loading, make request and wait for response, stop loading.
+	:return data from response
+	"""
 	twin.start_loading()
 	if request_type == "cluster":
 		data = requests.get('http://127.0.0.1:5000/mode/cluster/switch/{}'.format(current_uid)).json()

@@ -1,8 +1,8 @@
 import k8s_config
 import app_mode_backend as amb
 
-# Example script that prints out all Applications, their Deployables,
-# and the resources managed by their respective Deployable
+# Example script that prints out all Clusters, their Namespaces,
+# and the Deployments under each namespace.
 
 k8s_config.update_available_clusters()
 

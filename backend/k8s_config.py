@@ -10,14 +10,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # cluster to context mapping
 cc_mapping = {}
 
-
 def load_kube_config() -> Tuple[bool, Exception]:
 	"""
-	Loads the user's kube-config, returns an exception if something went wrong.
+	Loads the user's kube-config
 
-	Arguments:	None
-	Returns:	(bool, Exception) status of load operation and
-				accompanying exception, if one was thrown
+	:return: ((bool) whether or not exception ocurred while loading config,
+			  (Exception) exception if google auth error thrown, or (str) "" if no google exception)
 	"""
 
 	try:
@@ -33,8 +31,8 @@ def test_liveness(context_name: str) -> bool:
 	Makes a test request to a k8s client configured with the given context.
 
 	Usage: Helper function, called internally.
-	Arguments: (str) context_name
-	Returns: (bool) whether the context returned a valid response.
+	:param (str) context_name
+	:return: (bool) whether the context returned a valid response.
 	"""
 
 	# check if there is a valid context with given name
@@ -59,8 +57,7 @@ def update_available_clusters() -> Dict:
 	Updates the cluster to context mapping variable with all contexts and corresponding clusters that the user is authorized to access.
 
 	Usage: Call to refresh the list of accessible clusters.
-	Arguments: None
-	Returns: (dict) new cluster to context mapping
+	:return: (Dict) new cluster to context mapping
 	"""
 
 	contexts, _ = config.list_kube_config_contexts()
@@ -92,8 +89,8 @@ def all_cluster_names() -> List[str]:
 	Wrapper function that gets all cluster names from current cluster context mapping (cc_mapping).
 
 	Usage: Call after calling update_available_clusters() to get list of all clusters you can access right now.
-	Arguments: None
-	Returns: (list[str]) A list of the names of all accessible clusters.
+
+	:return: (List[str]) A list of the names of all accessible clusters.
 	"""
 
 	return list(cc_mapping.keys())
@@ -104,10 +101,9 @@ def context_for_cluster(cluster_name: str) -> str:
 	Finds and returns the name of a context that points to the given cluster.
 
 	Usage: Call when you have a cluster name and need the name of a valid context that points to that cluster.
-	Arguments: 	(str) cluster_name
-	Returns: 	(str) name of a context that points to the cluster,
-					if such a context could be found.
-				None, otherwise.
+	:param (str) cluster_name
+	:return: (str) name of a context that points to the cluster, if such a context could be found.
+			None, otherwise.
 	"""
 	global cc_mapping
 	return cc_mapping.get(cluster_name)
