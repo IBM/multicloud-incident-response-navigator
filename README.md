@@ -4,17 +4,13 @@ Skipper is an interactive terminal tool for managing multiple kubernetes cluster
 
 ## Installation and Setup
 
-Before you start, you will need to have python3 and pip3 installed. Then run
+Before you start, you will need to have python3 and pip3 installed. Then clone the repo, and run
 ```
-git clone git@github.com:IBM/multicloud-incident-response-navigator.git skipper
-cd skipper
 chmod +x ./installer && ./installer
 ```
 
-If you are unable to clone using SSH, download ZIP and follow starting from the second instruction.
-
 ## Running Skipper
-In the skipper/ directory, run
+In the project directory, run
 ```
 ./skipper
 ```
